@@ -16,7 +16,10 @@ import ipaddress
 import logging
 import os
 from pathlib import Path
+import shutil
 import ssl
+import subprocess
+import tempfile
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 try:
@@ -139,8 +142,8 @@ class CertificateManager:
         """
         Generates a self-signed Root CA private key and certificate.
         """
-        if not _HAS_CRYPTOGRAPHY:  # pragma: no cover
-            raise CertificateError("The 'cryptography' library is required to generate certificates.")
+        if not _HAS_CRYPTOGRAPHY:
+            return self._generate_ca_with_openssl(common_name, validity_days)
 
         private_key = rsa.generate_private_key(
             public_exponent=65537,
@@ -271,8 +274,16 @@ class CertificateManager:
         out_prefix: str,
         org_name: str = "AutoDev Coordinator",
     ) -> Tuple[Path, Path]:
-        if not _HAS_CRYPTOGRAPHY:  # pragma: no cover
-            raise CertificateError("The 'cryptography' library is required.")
+        if not _HAS_CRYPTOGRAPHY:
+            return self._generate_signed_cert_with_openssl(
+                ca,
+                common_name,
+                san_hosts,
+                is_server,
+                validity_days,
+                out_prefix,
+                org_name,
+            )
 
         ca_cert = x509.load_pem_x509_certificate(Path(ca.cert_path).read_bytes())
         ca_key = serialization.load_pem_private_key(Path(ca.key_path).read_bytes(), password=None)
@@ -329,6 +340,8 @@ class CertificateManager:
     ) -> CertificateInfo:
         """Verifies certificate validity, expiration, CA chain issuer, and revocation."""
         raw = Path(cert_path).read_bytes()
+        if not _HAS_CRYPTOGRAPHY:
+            return self._verify_certificate_with_stdlib(cert_path, raw, expected_common_name, current_time)
         cert = x509.load_pem_x509_certificate(raw)
         fp = cert.fingerprint(hashes.SHA256()).hex()
 
@@ -375,9 +388,203 @@ class CertificateManager:
             raw = cert_path_or_bytes
 
         if b"-----BEGIN CERTIFICATE-----" in raw:
-            cert = x509.load_pem_x509_certificate(raw)
-            return cert.fingerprint(hashes.SHA256()).hex()
+            if _HAS_CRYPTOGRAPHY:
+                cert = x509.load_pem_x509_certificate(raw)
+                return cert.fingerprint(hashes.SHA256()).hex()
+            try:
+                return hashlib.sha256(ssl.PEM_cert_to_DER_cert(raw.decode("ascii"))).hexdigest()
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise CertificateValidationError("Invalid PEM certificate data") from exc
         return hashlib.sha256(raw).hexdigest()
+
+    def _openssl(self) -> str:
+        executable = shutil.which("openssl")
+        if executable is None:
+            raise CertificateError(
+                "Certificate generation requires either the optional 'cryptography' package "
+                "or the OpenSSL executable."
+            )
+        return executable
+
+    def _run_openssl(self, *args: str) -> None:
+        result = subprocess.run(
+            [self._openssl(), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            details = result.stderr.strip() or result.stdout.strip()
+            raise CertificateError(f"OpenSSL command failed: {details}")
+
+    @staticmethod
+    def _openssl_subject(common_name: str, organization: str) -> str:
+        def escape(value: str) -> str:
+            return value.replace("\\", "\\\\").replace("/", "\\/")
+
+        return f"/C=US/O={escape(organization)}/CN={escape(common_name)}"
+
+    def _generate_ca_with_openssl(self, common_name: str, validity_days: int) -> CertificateAuthority:
+        cert_path = self.cert_dir / "ca.crt"
+        key_path = self.cert_dir / "ca.key"
+        self._run_openssl(
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key_path),
+            "-out",
+            str(cert_path),
+            "-days",
+            str(validity_days),
+            "-sha256",
+            "-subj",
+            self._openssl_subject(common_name, "AutoDev System"),
+            "-addext",
+            "basicConstraints=critical,CA:TRUE",
+            "-addext",
+            "keyUsage=critical,keyCertSign,cRLSign",
+        )
+        return CertificateAuthority(str(cert_path), str(key_path), common_name)
+
+    def _generate_signed_cert_with_openssl(
+        self,
+        ca: CertificateAuthority,
+        common_name: str,
+        san_hosts: List[str],
+        is_server: bool,
+        validity_days: int,
+        out_prefix: str,
+        org_name: str,
+    ) -> Tuple[Path, Path]:
+        cert_path = self.cert_dir / f"{out_prefix}.crt"
+        key_path = self.cert_dir / f"{out_prefix}.key"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="autodev-cert-",
+            suffix=".cnf",
+            dir=self.cert_dir,
+            delete=False,
+        ) as extension_file:
+            extension_path = Path(extension_file.name)
+            extensions = [
+                "basicConstraints=critical,CA:FALSE",
+                "keyUsage=critical,digitalSignature,keyEncipherment",
+                f"extendedKeyUsage={'serverAuth' if is_server else 'clientAuth'}",
+            ]
+            if san_hosts:
+                san_entries = []
+                for host in san_hosts:
+                    try:
+                        ipaddress.ip_address(host)
+                        san_entries.append(f"IP:{host}")
+                    except ValueError:
+                        san_entries.append(f"DNS:{host}")
+                extensions.append(f"subjectAltName={','.join(san_entries)}")
+            extension_file.write("\n".join(extensions) + "\n")
+
+        csr_path = self.cert_dir / f"{out_prefix}.csr"
+        try:
+            self._run_openssl(
+                "req",
+                "-new",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(key_path),
+                "-out",
+                str(csr_path),
+                "-subj",
+                self._openssl_subject(common_name, org_name),
+            )
+            self._run_openssl(
+                "x509",
+                "-req",
+                "-in",
+                str(csr_path),
+                "-CA",
+                ca.cert_path,
+                "-CAkey",
+                ca.key_path,
+                "-CAcreateserial",
+                "-out",
+                str(cert_path),
+                "-days",
+                str(validity_days),
+                "-sha256",
+                "-extfile",
+                str(extension_path),
+            )
+        finally:
+            csr_path.unlink(missing_ok=True)
+            extension_path.unlink(missing_ok=True)
+        return cert_path, key_path
+
+    def _verify_certificate_with_stdlib(
+        self,
+        cert_path: Union[str, Path],
+        raw: bytes,
+        expected_common_name: Optional[str],
+        current_time: Optional[datetime],
+    ) -> CertificateInfo:
+        try:
+            decoded = ssl._ssl._test_decode_cert(str(cert_path))
+            not_before_text = decoded["notBefore"]
+            not_after_text = decoded["notAfter"]
+            before = datetime.fromtimestamp(ssl.cert_time_to_seconds(not_before_text), timezone.utc)
+            after = datetime.fromtimestamp(ssl.cert_time_to_seconds(not_after_text), timezone.utc)
+        except (KeyError, OSError, ssl.SSLError, ValueError) as exc:
+            raise CertificateValidationError(f"Invalid certificate {cert_path}: {exc}") from exc
+
+        fingerprint = self.get_certificate_fingerprint(raw)
+        if self.is_revoked(fingerprint):
+            raise CertificateRevocationError(f"Certificate {fingerprint} has been revoked.")
+        now = current_time or datetime.now(timezone.utc)
+        if now > after:
+            raise CertificateExpiredError(f"Certificate expired at {after.isoformat()}")
+        if now < before:
+            raise CertificateValidationError(f"Certificate is not yet valid until {before.isoformat()}")
+
+        common_name = next(
+            (
+                value
+                for relative_name in decoded.get("subject", ())
+                for name, value in relative_name
+                if name == "commonName"
+            ),
+            "",
+        )
+        if expected_common_name and common_name != expected_common_name:
+            raise CertificateValidationError(
+                f"Certificate Common Name '{common_name}' does not match expected '{expected_common_name}'."
+            )
+
+        ca_path = self.cert_dir / "ca.crt"
+        if ca_path.exists() and current_time is None:
+            result = subprocess.run(
+                [self._openssl(), "verify", "-CAfile", str(ca_path), str(cert_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode:
+                raise CertificateValidationError(
+                    f"Certificate is not trusted by the local CA: {result.stderr.strip() or result.stdout.strip()}"
+                )
+
+        return CertificateInfo(
+            cert_path=str(cert_path),
+            common_name=common_name,
+            fingerprint_sha256=fingerprint,
+            is_ca=False,
+            not_valid_before=before.isoformat(),
+            not_valid_after=after.isoformat(),
+            is_expired=False,
+        )
 
     def create_server_ssl_context(
         self,

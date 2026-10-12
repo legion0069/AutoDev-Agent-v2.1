@@ -6,8 +6,42 @@ Strictly 100% Python Standard Library. Zero external dependencies.
 import threading
 import time
 import uuid
+import enum
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
+
+
+class PaperSectionType(str, enum.Enum):
+    """Legacy structured-paper section names."""
+
+    INTRODUCTION = "introduction"
+    BACKGROUND = "background"
+    METHODOLOGY = "methodology"
+    EXPERIMENTAL_SETUP = "experimental_setup"
+    RESULTS = "results"
+    DISCUSSION = "discussion"
+    CONCLUSION = "conclusion"
+    REFERENCES = "references"
+
+
+@dataclass
+class PaperTemplate:
+    """Legacy paper template descriptor."""
+
+    name: str = "default"
+    sections: List[PaperSectionType] = field(default_factory=list)
+
+
+@dataclass
+class ScientificPaper:
+    """Legacy mutable structured paper returned by create_paper()."""
+
+    paper_id: str
+    title: str
+    authors: List[str]
+    abstract: str = ""
+    keywords: List[str] = field(default_factory=list)
+    sections: List[Dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -77,6 +111,9 @@ class EngineeringPaper:
 {ref_section}
 """
 
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
 
 class PaperGenerator:
     """
@@ -87,6 +124,68 @@ class PaperGenerator:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._papers: Dict[str, EngineeringPaper] = {}
+        self._legacy_papers: Dict[str, ScientificPaper] = {}
+
+    def create_paper(
+        self,
+        title: str,
+        authors: List[str],
+        abstract: str = "",
+        keywords: Optional[List[str]] = None,
+        template: Optional[PaperTemplate] = None,
+    ) -> ScientificPaper:
+        """Creates a paper using the legacy section-oriented API."""
+        paper = ScientificPaper(
+            paper_id=f"PAPER-{uuid.uuid4().hex[:8].upper()}",
+            title=title,
+            authors=list(authors),
+            abstract=abstract,
+            keywords=list(keywords or []),
+        )
+        with self._lock:
+            self._legacy_papers[paper.paper_id] = paper
+        return paper
+
+    def add_section(
+        self,
+        paper_id: str,
+        section_type: PaperSectionType,
+        title: str,
+        content: str,
+    ) -> Dict[str, str]:
+        with self._lock:
+            paper = self._legacy_papers.get(paper_id)
+            if paper is None:
+                raise KeyError(f"Paper {paper_id!r} not found")
+            section = {
+                "section_type": PaperSectionType(section_type).value,
+                "title": title,
+                "content": content,
+            }
+            paper.sections.append(section)
+            return section
+
+    def get_paper(self, paper_id: str) -> Optional[ScientificPaper | EngineeringPaper]:
+        with self._lock:
+            return self._legacy_papers.get(paper_id) or self._papers.get(paper_id)
+
+    def get_all_papers(self) -> List[ScientificPaper | EngineeringPaper]:
+        with self._lock:
+            return list(self._legacy_papers.values()) + list(self._papers.values())
+
+    def render_markdown(self, paper_id: str) -> str:
+        paper = self.get_paper(paper_id)
+        if paper is None:
+            raise KeyError(f"Paper {paper_id!r} not found")
+        if isinstance(paper, EngineeringPaper):
+            return paper.to_markdown()
+        authors = ", ".join(paper.authors)
+        sections = [f"# {paper.title}", f"**Authors:** {authors}"]
+        if paper.abstract:
+            sections.extend(("## Abstract", paper.abstract))
+        for section in paper.sections:
+            sections.extend((f"## {section['title']}", section["content"]))
+        return "\n\n".join(sections)
 
     def compose_paper(
         self,
@@ -140,6 +239,7 @@ class PaperGenerator:
         threats: Optional[str] = None,
     ) -> EngineeringPaper:
         """Synthesizes a complete technical paper from empirical A/B and benchmark data."""
+        effect_size = effect_size or 0.0
         abstract = (
             f"Autonomous software development requires continuous algorithmic optimization. "
             f"In this paper, we investigate the empirical impact of '{hypothesis_title}'. "
@@ -217,6 +317,6 @@ class PaperGenerator:
             references=refs,
         )
 
-    def get_paper(self, paper_id: str) -> Optional[EngineeringPaper]:
+    def get_paper(self, paper_id: str) -> Optional[ScientificPaper | EngineeringPaper]:
         with self._lock:
-            return self._papers.get(paper_id)
+            return self._legacy_papers.get(paper_id) or self._papers.get(paper_id)

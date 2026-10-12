@@ -993,8 +993,55 @@ from core.research_lab import (
     ResearchLab,
     ResearchMetrics,
 )
+from core.reasoning_cache import ReasoningCache
+from core.reasoning_engine import ReasoningEngine
+from core.planning_revision import PlanReview, PlanningRevision, PlanningRevisionEngine
+from core.knowledge_reasoner import KnowledgeReasoner
+from core.explainability import ExplainabilityEngine
+from core.agent_bus import AgentBus, AgentMessage as TypedAgentMessage, AgentMessageType
+from core.agent_metrics import AgentMetricsTracker
+from core.blackboard import Blackboard, BlackboardConflictError, BlackboardVersion
+from core.capability_manager import AgentCapabilityManager
+from core.collaboration_engine import CollaborationEngine as MultiAgentCollaborationEngine
+from core.conflict_resolution import (
+    CollaborationConflict,
+    ConflictKind,
+    ConflictResolutionEngine,
+)
+from core.consensus_engine import (
+    ConsensusEngine as MultiAgentConsensusEngine,
+    ConsensusResult as MultiAgentConsensusResult,
+)
+from core.multi_agent_runtime import MultiAgentRuntime
+from core.parallel_scheduler import ParallelTaskScheduler
+from core.task_negotiation import NegotiationResult, TaskNegotiationEngine
 
 __all__ = [
+    "AgentBus",
+    "TypedAgentMessage",
+    "AgentMessageType",
+    "AgentMetricsTracker",
+    "Blackboard",
+    "BlackboardConflictError",
+    "BlackboardVersion",
+    "AgentCapabilityManager",
+    "MultiAgentCollaborationEngine",
+    "CollaborationConflict",
+    "ConflictKind",
+    "ConflictResolutionEngine",
+    "MultiAgentConsensusEngine",
+    "MultiAgentConsensusResult",
+    "MultiAgentRuntime",
+    "ParallelTaskScheduler",
+    "NegotiationResult",
+    "TaskNegotiationEngine",
+    "ReasoningCache",
+    "ReasoningEngine",
+    "PlanReview",
+    "PlanningRevision",
+    "PlanningRevisionEngine",
+    "KnowledgeReasoner",
+    "ExplainabilityEngine",
     "CodeIndexer",
     "SymbolGraph",
     "Symbol",
@@ -1702,8 +1749,6 @@ __all__ = [
     "ResearchLab",
     "ResearchMetrics",
 ]
-
-
 
 
 

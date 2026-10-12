@@ -227,6 +227,52 @@ class SelfEvolvingEngine:
                 throughput_ops_sec=round(1.0 / max(0.001, duration_seconds), 2),
             )
 
+            total_tests = tests_passed + tests_failed
+            structured_reflection = {
+                "task_id": task_id,
+                "outcome": "success" if execution_success else "failure",
+                "dimensions": {
+                    "planning_reliability": round(1.0 / (1 + max(0, retries_count)), 4),
+                    "test_adequacy": round(tests_passed / total_tests, 4) if total_tests else 0.0,
+                    "output_quality": round(max(0.0, min(100.0, review_score)) / 100.0, 4),
+                    "prompt_efficiency": round(
+                        max(0.0, min(1.0, prompt_analysis.get("token_efficiency_score", 0.0))),
+                        4,
+                    ),
+                    "reliability": 1.0 if execution_success else 0.0,
+                    "execution_duration_seconds": round(max(0.0, duration_seconds), 4),
+                    "affected_file_count": len(affected_files or []),
+                },
+                "improvement_priorities": sorted(
+                    priority
+                    for condition, priority in (
+                        (not execution_success, "failure_recovery"),
+                        (total_tests == 0 or tests_failed > 0, "test_coverage"),
+                        (retries_count > 0, "planning_and_first_pass_quality"),
+                        (duration_seconds > 60.0, "execution_efficiency"),
+                    )
+                    if condition
+                ),
+            }
+            try:
+                self.learning_engine.record_knowledge(
+                    domain="task_reflection",
+                    topic=task_id,
+                    title=f"Structured reflection: {task_title}",
+                    summary=(
+                        f"{structured_reflection['outcome']} task; "
+                        f"quality {structured_reflection['dimensions']['output_quality']:.2f}; "
+                        f"{len(structured_reflection['improvement_priorities'])} improvement priorities."
+                    ),
+                    details=json.dumps(structured_reflection, sort_keys=True),
+                    confidence=0.9 if execution_success else 0.7,
+                    utility_score=80.0 if structured_reflection["improvement_priorities"] else 60.0,
+                    promoted=False,
+                    tags=["structured_reflection", "autonomous_task"],
+                )
+            except (OSError, TypeError, ValueError) as err:
+                logger.warning("Could not persist structured task reflection for %s: %s", task_id, err)
+
             elapsed_ms = (time.time() - start_ts) * 1000.0
             logger.info("Autonomous learning cycle completed for task %s in %.2f ms", task_id, elapsed_ms)
 
@@ -240,6 +286,7 @@ class SelfEvolvingEngine:
                 "prompt_efficiency_score": prompt_analysis["token_efficiency_score"],
                 "run_id": analytics_run["run_id"],
                 "learning_duration_ms": round(elapsed_ms, 2),
+                "structured_reflection": structured_reflection,
             }
 
     def on_sprint_completed(
@@ -631,4 +678,3 @@ class SelfEvolvingEngine:
 
 # Backwards compatibility alias
 LearningCoordinator = SelfEvolvingEngine
-

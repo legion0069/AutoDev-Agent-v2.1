@@ -175,24 +175,36 @@ class DependencyGraph:
         visited: Dict[str, int] = {}  # 0=unvisited, 1=visiting, 2=visited
         cycles: List[List[str]] = []
         path: List[str] = []
+        path_positions: Dict[str, int] = {}
 
-        def dfs(node: str) -> None:
-            visited[node] = 1
-            path.append(node)
+        for root in sorted(self._nodes):
+            if visited.get(root, 0):
+                continue
+            visited[root] = 1
+            path_positions[root] = 0
+            path.append(root)
+            stack = [(root, iter(sorted(self._adjacency.get(root, ()))))]
 
-            for neighbor in self._adjacency.get(node, []):
-                if visited.get(neighbor, 0) == 1:
-                    cycle_start = path.index(neighbor)
-                    cycles.append(list(path[cycle_start:] + [neighbor]))
-                elif visited.get(neighbor, 0) == 0:
-                    dfs(neighbor)
+            while stack:
+                node, neighbors = stack[-1]
+                try:
+                    neighbor = next(neighbors)
+                except StopIteration:
+                    stack.pop()
+                    visited[node] = 2
+                    path_positions.pop(node, None)
+                    path.pop()
+                    continue
 
-            path.pop()
-            visited[node] = 2
-
-        for node in self._nodes:
-            if visited.get(node, 0) == 0:
-                dfs(node)
+                state = visited.get(neighbor, 0)
+                if state == 1:
+                    cycle_start = path_positions[neighbor]
+                    cycles.append(path[cycle_start:] + [neighbor])
+                elif state == 0:
+                    visited[neighbor] = 1
+                    path_positions[neighbor] = len(path)
+                    path.append(neighbor)
+                    stack.append((neighbor, iter(sorted(self._adjacency.get(neighbor, ())))))
 
         return cycles
 

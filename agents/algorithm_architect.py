@@ -38,6 +38,31 @@ class AlgorithmArchitectAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Algorithm Architect"
+
+    def design_algorithm(
+        self,
+        name: str,
+        domain: AlgorithmDomain,
+        time_complexity: str = "O(N log N)",
+        space_complexity: str = "O(N)",
+        description: str = "",
+    ) -> Dict[str, Any]:
+        """Registers an algorithm through the legacy agent API."""
+        record = self.lab.algorithm_registry.register_algorithm(
+            name=name,
+            domain=domain,
+            description=description,
+            specification=description or name,
+            time_complexity=time_complexity,
+            space_complexity=space_complexity,
+            author=self.name,
+            adoption_status=AlgorithmAdoptionStatus.CANDIDATE,
+        )
+        return record.to_dict()
+
     def register_novel_algorithm(
         self,
         name: str,

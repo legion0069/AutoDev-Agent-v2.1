@@ -827,6 +827,7 @@ class ArchitectureManager:
         self.persistence_path = Path(persistence_path).resolve() if persistence_path else self.DEFAULT_PERSISTENCE_PATH.resolve()
         self.auto_create = auto_create
         self._decisions: Dict[str, ArchitectureDecision] = {}
+        self._search_cache: Dict[str, List[ArchitectureDecision]] = {}
         self._cached_all: List[ArchitectureDecision] = []
         self._cached_accepted: List[ArchitectureDecision] = []
         self._has_repo_rule: bool = False
@@ -837,6 +838,7 @@ class ArchitectureManager:
 
     def _rebuild_cache(self) -> None:
         """Rebuilds internal lookup and filtering caches."""
+        self._search_cache.clear()
         self._cached_all = list(self._decisions.values())
         self._cached_all.sort(key=lambda d: d.id)
         self._cached_accepted = [d for d in self._cached_all if d.status == DecisionStatus.ACCEPTED.value]
@@ -990,31 +992,36 @@ class ArchitectureManager:
         if not query or not query.strip():
             return self.list_decisions()
 
-        tokens = [t.lower() for t in query.split() if len(t) > 1]
+        cache_key = query.strip().casefold()
+        cached_result = self._search_cache.get(cache_key)
+        if cached_result is not None:
+            return list(cached_result)
+
+        tokens = [t for t in cache_key.split() if len(t) > 1]
         if not tokens:
             return []
 
         scored: List[Tuple[float, ArchitectureDecision]] = []
         for adr in self._decisions.values():
-            score = 0.0
-            t_low = adr.title.lower()
-            tags_low = [t.lower() for t in adr.tags]
-
-            for tok in tokens:
-                if tok in t_low:
-                    score += 5.0
-                elif tok in tags_low:
-                    score += 4.0
-                elif tok in adr.decision.lower():
-                    score += 2.0
-                elif tok in adr.context.lower():
-                    score += 1.0
+            title_lower = adr.title.lower()
+            tags_lower = {tag.lower() for tag in adr.tags}
+            decision_lower = adr.decision.lower()
+            context_lower = adr.context.lower()
+            score = sum(
+                5.0 if token in title_lower else
+                4.0 if token in tags_lower else
+                2.0 if token in decision_lower else
+                1.0 if token in context_lower else 0.0
+                for token in tokens
+            )
 
             if score > 0.0:
                 scored.append((score, adr))
 
         scored.sort(key=lambda item: (-item[0], item[1].id))
-        return [item[1] for item in scored]
+        result = [item[1] for item in scored]
+        self._search_cache[cache_key] = result
+        return list(result)
 
     def search_by_component(self, component_name: str) -> List[ArchitectureDecision]:
         """Finds ADRs associated with a specific component or module file."""

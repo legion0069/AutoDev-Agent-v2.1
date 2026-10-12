@@ -38,6 +38,28 @@ class ExperimentOutcome(str, enum.Enum):
     INCONCLUSIVE = "INCONCLUSIVE"    # Insufficient effect size or p >= alpha
 
 
+class ExperimentStage(str, enum.Enum):
+    """Legacy lifecycle stages retained for callers of create_experiment()."""
+
+    PROPOSED = "PROPOSED"
+    DESIGNED = "DESIGNED"
+    EXECUTING = "EXECUTING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+@dataclass
+class ScientificExperiment:
+    """Legacy experiment record used by the staged lifecycle API."""
+
+    experiment_id: str
+    name: str
+    hypothesis_statement: str
+    candidate_code: str
+    baseline_code: str
+    stage: ExperimentStage = ExperimentStage.PROPOSED
+
+
 @dataclass
 class ExperimentRecord:
     """Comprehensive immutable record of an experimental trial."""
@@ -96,6 +118,57 @@ class ExperimentEngine:
         self.scientific_logger = scientific_logger or ScientificLogger()
         self.research_memory = research_memory or ResearchMemory()
         self._experiments: Dict[str, ExperimentRecord] = {}
+        self._legacy_experiments: Dict[str, ScientificExperiment] = {}
+
+    def create_experiment(
+        self,
+        name: str,
+        hypothesis_statement: str,
+        candidate_code: str,
+        baseline_code: str,
+    ) -> ScientificExperiment:
+        """Creates a proposed experiment using the legacy staged API."""
+        experiment = ScientificExperiment(
+            experiment_id=f"EXP-{uuid.uuid4().hex[:8].upper()}",
+            name=name,
+            hypothesis_statement=hypothesis_statement,
+            candidate_code=candidate_code,
+            baseline_code=baseline_code,
+        )
+        with self._lock:
+            self._legacy_experiments[experiment.experiment_id] = experiment
+        return experiment
+
+    def transition_stage(
+        self,
+        experiment_id: str,
+        stage: ExperimentStage,
+    ) -> ScientificExperiment:
+        """Advances a legacy experiment through its ordered lifecycle."""
+        with self._lock:
+            experiment = self._legacy_experiments.get(experiment_id)
+            if experiment is None:
+                raise KeyError(f"Experiment {experiment_id!r} not found")
+            allowed = {
+                ExperimentStage.PROPOSED: {ExperimentStage.DESIGNED, ExperimentStage.FAILED},
+                ExperimentStage.DESIGNED: {ExperimentStage.EXECUTING, ExperimentStage.FAILED},
+                ExperimentStage.EXECUTING: {ExperimentStage.COMPLETED, ExperimentStage.FAILED},
+                ExperimentStage.COMPLETED: set(),
+                ExperimentStage.FAILED: set(),
+            }
+            if stage not in allowed[experiment.stage]:
+                raise ValueError(
+                    f"Invalid experiment stage transition: {experiment.stage.value} -> {stage.value}"
+                )
+            experiment.stage = stage
+            return experiment
+
+    def get_experiment(
+        self,
+        experiment_id: str,
+    ) -> Optional[ExperimentRecord | ScientificExperiment]:
+        with self._lock:
+            return self._legacy_experiments.get(experiment_id) or self._experiments.get(experiment_id)
 
     def run_experiment(
         self,
@@ -188,7 +261,7 @@ class ExperimentEngine:
                 summary = (
                     f"Hypothesis SUPPORTED: Variant achieved {abs(delta_pct):.2f}% improvement "
                     f"in {metric_name} with statistical significance (p={t_res.p_value:.6f} < {alpha}, "
-                    f"Cohen's d={t_res.effect_size:.2f})."
+                    f"Cohen's d={t_res.effect_size or 0.0:.2f})."
                 )
                 if hyp_id:
                     self.hypothesis_engine.update_status(hyp_id, HypothesisStatus.VALIDATED, evidence=summary)
@@ -237,6 +310,9 @@ class ExperimentEngine:
 
             return record
 
-    def get_experiment(self, experiment_id: str) -> Optional[ExperimentRecord]:
+    def get_experiment(
+        self,
+        experiment_id: str,
+    ) -> Optional[ExperimentRecord | ScientificExperiment]:
         with self._lock:
-            return self._experiments.get(experiment_id)
+            return self._legacy_experiments.get(experiment_id) or self._experiments.get(experiment_id)

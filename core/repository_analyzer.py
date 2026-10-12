@@ -1130,13 +1130,16 @@ class RepositoryAnalyzer:
                 files.add(f.replace("\\", "/"))
 
         if root.exists() and root.is_dir():
-            for p in root.rglob("*"):
-                if p.is_file():
-                    # Check ignore dirs
-                    parts = p.relative_to(root).parts
-                    if not any(ign in parts for ign in CodeIndexer.IGNORE_DIRS):
-                        rel = str(p.relative_to(root)).replace("\\", "/")
-                        files.add(rel)
+            for current_root, directories, filenames in os.walk(root):
+                directories[:] = sorted(
+                    directory
+                    for directory in directories
+                    if directory not in CodeIndexer.IGNORE_DIRS and not directory.startswith(".")
+                )
+                for filename in filenames:
+                    path = Path(current_root) / filename
+                    if path.is_file():
+                        files.add(path.relative_to(root).as_posix())
 
         return sorted(list(files))
 

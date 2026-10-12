@@ -41,6 +41,22 @@ class ExperimentDesignerAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Experiment Designer"
+
+    def design_experiment(
+        self, target_metric: str, sample_size: int, independent_vars: List[str]
+    ) -> Dict[str, Any]:
+        if sample_size < 1:
+            raise ValueError("sample_size must be positive")
+        return {
+            "target_metric": target_metric,
+            "sample_size": sample_size,
+            "independent_vars": list(independent_vars),
+            "designed_by": self.name,
+        }
+
     def calculate_required_sample_size(
         self,
         expected_effect_size_d: float = 0.8,  # Cohen's d (0.2=small, 0.5=medium, 0.8=large)

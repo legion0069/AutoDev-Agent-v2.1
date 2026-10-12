@@ -38,6 +38,33 @@ class PrincipalResearcherAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Principal Researcher"
+
+    def propose_hypothesis(
+        self, statement: str, rationale: str, priority: HypothesisPriority
+    ) -> Dict[str, Any]:
+        hypothesis = self.lab.hypothesis_engine.formulate(
+            statement=statement,
+            rationale=rationale,
+            priority=priority,
+            author=self.name,
+        )
+        return hypothesis.to_dict()
+
+    def identify_literature_gap(self, domain: str, existing_approaches: List[str]) -> Dict[str, Any]:
+        approaches = list(existing_approaches)
+        return {
+            "domain": domain,
+            "existing_approaches": approaches,
+            "opportunity": (
+                f"Investigate approaches beyond {', '.join(approaches)} in {domain}."
+                if approaches
+                else f"Establish baseline research coverage for {domain}."
+            ),
+        }
+
     def formulate_speedup_hypothesis(
         self,
         module_name: str,

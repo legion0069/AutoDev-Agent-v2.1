@@ -28,14 +28,48 @@ class PeerReviewerAgent:
         name: str = "PeerReviewer",
         lab: Optional[ResearchLab] = None,
         bus: Optional[CommunicationBus] = None,
+        reviewer_id: Optional[str] = None,
     ) -> None:
-        self.name = name
+        self.name = reviewer_id or name
         self.lab = lab or ResearchLab()
         self.bus = bus
         self.authority_level = 3
 
         if self.bus:
             self.bus.register_entity(self.name)
+
+    @property
+    def role(self) -> str:
+        return "Peer Reviewer"
+
+    def review_paper(
+        self,
+        paper_id: str,
+        rubric: Any,
+        comments: str = "",
+    ) -> Dict[str, Any]:
+        """Submits a review through the legacy four-score rubric interface."""
+        from core.peer_review_engine import ReviewRecommendation, ReviewRubric
+
+        if not isinstance(rubric, ReviewRubric):
+            raise TypeError("rubric must be a ReviewRubric")
+        review = self.lab.peer_review_engine.submit_review(
+            paper_id=paper_id,
+            reviewer_name=self.name,
+            rubric=rubric,
+            comments=comments,
+        )
+        if not hasattr(review, "recommendation"):
+            raise TypeError("Legacy rubric review returned an incompatible result")
+        recommendation = ReviewRecommendation(review.recommendation)
+        return {
+            "review_id": review.review_id,
+            "paper_id": review.paper_id,
+            "reviewer_id": self.name,
+            "recommendation": recommendation.value,
+            "overall_score": rubric.overall_score,
+            "comments": comments,
+        }
 
     def review_manuscript(
         self,

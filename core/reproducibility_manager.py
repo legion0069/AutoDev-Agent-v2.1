@@ -57,6 +57,14 @@ class ReplayResult:
     replay_time_sec: float
     details: str
 
+    @property
+    def reproduced(self) -> bool:
+        return self.is_exact_match
+
+    @property
+    def drift_score(self) -> float:
+        return self.numerical_diff_max
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "manifest_id": self.manifest_id,
@@ -77,6 +85,64 @@ class ReproducibilityManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._manifests: Dict[str, ExperimentRunManifest] = {}
+
+    @staticmethod
+    def capture_environment() -> Dict[str, str]:
+        return {
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+            "system": platform.system(),
+        }
+
+    def create_manifest(
+        self,
+        experiment_id: str,
+        code_hash: str,
+        parameters: Dict[str, Any],
+        seed: int,
+    ) -> ExperimentRunManifest:
+        return self.record_manifest(
+            experiment_id=experiment_id,
+            seed=seed,
+            config=parameters,
+            inputs={},
+            outputs={},
+            code_snippet=code_hash,
+        )
+
+    def verify_replay(
+        self,
+        manifest: ExperimentRunManifest,
+        execution_fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        expected_output: Dict[str, Any],
+        tolerance: float = 1e-5,
+    ) -> ReplayResult:
+        started = time.perf_counter()
+        random.seed(manifest.seed)
+        actual = execution_fn(manifest.config)
+        elapsed = time.perf_counter() - started
+        differences = [
+            abs(float(actual[key]) - float(value))
+            for key, value in expected_output.items()
+            if key in actual and isinstance(value, (int, float)) and isinstance(actual[key], (int, float))
+        ]
+        missing_or_different = any(
+            key not in actual or actual[key] != value
+            for key, value in expected_output.items()
+            if not (key in actual and isinstance(value, (int, float)) and isinstance(actual[key], (int, float))
+                    and abs(float(actual[key]) - float(value)) <= tolerance)
+        )
+        drift = max(differences, default=0.0)
+        exact = not missing_or_different and drift <= tolerance
+        checksum_matches = self.compute_sha256(actual) == self.compute_sha256(expected_output)
+        return ReplayResult(
+            manifest_id=manifest.manifest_id,
+            is_exact_match=exact,
+            numerical_diff_max=drift,
+            output_checksum_matches=checksum_matches,
+            replay_time_sec=elapsed,
+            details="Exact deterministic replay achieved." if exact else "Replay output drift detected.",
+        )
 
     @staticmethod
     def compute_sha256(data: Any) -> str:

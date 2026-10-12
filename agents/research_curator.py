@@ -37,6 +37,15 @@ class ResearchCuratorAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Research Curator"
+
+    def archive_findings(self, experiment_id: str, summary: str, tags: List[str]) -> Dict[str, Any]:
+        record = {"experiment_id": experiment_id, "summary": summary, "tags": list(tags)}
+        self.lab.research_memory.store_experiment(experiment_id, record)
+        return record
+
     def record_idea(self, title: str, description: str, author: str = "Researcher") -> ResearchIdea:
         """Stores an ideation concept in the persistent memory bank."""
         return self.lab.research_memory.add_idea(title=title, description=description, author=author)

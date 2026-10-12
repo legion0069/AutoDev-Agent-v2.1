@@ -106,7 +106,7 @@ class LearningEvent:
     """Represents a discrete learning event generated from execution outcomes."""
     id: str = field(default_factory=lambda: f"EVT-{int(time.time() * 1000)}")
     event_id: str = ""
-    timestamp: float = field(default_factory=time.time)
+    timestamp: float = field(default_factory=lambda: float(int(time.time())))
     project: str = "default_project"
     project_id: str = ""
     task: str = "task_0"

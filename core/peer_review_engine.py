@@ -19,6 +19,40 @@ class ReviewRecommendation(str, enum.Enum):
     REJECT = "REJECT"
 
 
+EditorialDecision = ReviewRecommendation
+
+
+@dataclass
+class ReviewRubric:
+    """Legacy four-dimension rubric scored on a ten-point scale."""
+
+    novelty_score: float
+    soundness_score: float
+    clarity_score: float
+    empirical_rigor_score: float
+
+    @property
+    def overall_score(self) -> float:
+        return (
+            self.novelty_score
+            + self.soundness_score
+            + self.clarity_score
+            + self.empirical_rigor_score
+        ) / 4
+
+
+@dataclass
+class ReviewEvaluation:
+    """Legacy review result retaining its submitted rubric."""
+
+    review_id: str
+    paper_id: str
+    reviewer_name: str
+    rubric: ReviewRubric
+    comments: str
+    recommendation: ReviewRecommendation
+
+
 @dataclass
 class IndividualReview:
     """Rigorous academic assessment from an individual reviewer agent."""
@@ -95,21 +129,57 @@ class PeerReviewEngine:
         self._lock = threading.RLock()
         self._reviews: Dict[str, List[IndividualReview]] = {}  # paper_id -> reviews
         self._decisions: Dict[str, ConsensusReview] = {}
+        self._legacy_reviews: Dict[str, List[ReviewEvaluation]] = {}
 
     def submit_review(
         self,
         paper_id: str,
-        reviewer: str,
-        novelty: float,
-        correctness: float,
-        reproducibility: float,
-        experimental_quality: float,
-        writing_quality: float,
-        statistical_soundness: float,
-        comments: str,
-        recommendation: ReviewRecommendation,
-    ) -> IndividualReview:
+        reviewer: Optional[str] = None,
+        novelty: Optional[float] = None,
+        correctness: Optional[float] = None,
+        reproducibility: Optional[float] = None,
+        experimental_quality: Optional[float] = None,
+        writing_quality: Optional[float] = None,
+        statistical_soundness: Optional[float] = None,
+        comments: str = "",
+        recommendation: Optional[ReviewRecommendation] = None,
+        *,
+        reviewer_name: Optional[str] = None,
+        rubric: Optional[ReviewRubric] = None,
+    ) -> IndividualReview | ReviewEvaluation:
         """Records an individual review for a paper."""
+        if rubric is not None:
+            reviewer_label = reviewer_name or reviewer or "Reviewer"
+            selected_recommendation = recommendation or (
+                ReviewRecommendation.ACCEPT
+                if rubric.overall_score >= 8.0
+                else ReviewRecommendation.MINOR_REVISION
+                if rubric.overall_score >= 6.0
+                else ReviewRecommendation.REJECT
+            )
+            result = ReviewEvaluation(
+                review_id=f"REV-{uuid.uuid4().hex[:8].upper()}",
+                paper_id=paper_id,
+                reviewer_name=reviewer_label,
+                rubric=rubric,
+                comments=comments,
+                recommendation=ReviewRecommendation(selected_recommendation),
+            )
+            with self._lock:
+                self._legacy_reviews.setdefault(paper_id, []).append(result)
+            return result
+        required_metrics = (
+            reviewer,
+            novelty,
+            correctness,
+            reproducibility,
+            experimental_quality,
+            writing_quality,
+            statistical_soundness,
+        )
+        if any(value is None for value in required_metrics):
+            raise TypeError("Numeric review dimensions and reviewer are required.")
+        selected_recommendation = recommendation or ReviewRecommendation.MINOR_REVISION
         with self._lock:
             rid = f"REV-{uuid.uuid4().hex[:8].upper()}"
             review = IndividualReview(
@@ -123,11 +193,24 @@ class PeerReviewEngine:
                 writing_quality=max(1.0, min(5.0, writing_quality)),
                 statistical_soundness=max(1.0, min(5.0, statistical_soundness)),
                 comments=comments,
-                recommendation=recommendation,
+                recommendation=ReviewRecommendation(selected_recommendation),
             )
 
             self._reviews.setdefault(paper_id, []).append(review)
             return review
+
+    def determine_editorial_decision(self, paper_id: str) -> ReviewRecommendation:
+        with self._lock:
+            reviews = self._legacy_reviews.get(paper_id, [])
+            if not reviews:
+                return self.synthesize_consensus(paper_id).decision
+            accepts = sum(review.recommendation is ReviewRecommendation.ACCEPT for review in reviews)
+            rejects = sum(review.recommendation is ReviewRecommendation.REJECT for review in reviews)
+            if accepts > rejects:
+                return ReviewRecommendation.ACCEPT
+            if rejects > accepts:
+                return ReviewRecommendation.REJECT
+            return ReviewRecommendation.MINOR_REVISION
 
     def conduct_automated_review(
         self,

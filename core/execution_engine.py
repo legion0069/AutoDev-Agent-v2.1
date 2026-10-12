@@ -745,8 +745,14 @@ class ExecutionEngine:
                     return {"gate_id": gate.gate_id, "passed": False, "error": f"TesterAgent execution failed: {exc}"}
             else:
                 # Direct subprocess fallback using sandbox
+                test_command = gate.command or f"{sys.executable} -m pytest tests/ -v"
+                if test_command.lstrip().startswith("pytest"):
+                    test_command = f"{sys.executable} -m {test_command}"
+                elif test_command.lstrip().startswith(("python -m pytest", "python3 -m pytest")):
+                    _, command_args = test_command.lstrip().split(None, 1)
+                    test_command = f"{sys.executable} {command_args}"
                 res = self.sandbox.run_command(
-                    gate.command or f"{sys.executable} -m pytest tests/ -v",
+                    test_command,
                     timeout_seconds=gate.timeout_seconds,
                 )
                 return {"gate_id": gate.gate_id, "passed": res.success, "stdout": res.stdout, "error": res.stderr if not res.success else None}

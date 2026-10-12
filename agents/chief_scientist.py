@@ -47,6 +47,24 @@ class ChiefScientistAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Chief Scientist"
+
+    def set_research_charter(self, focus_area: str, budget_usd: float) -> Dict[str, Any]:
+        return {"focus_area": focus_area, "budget_usd": budget_usd, "set_by": self.name}
+
+    def approve_experiment_proposal(
+        self, experiment_id: str, expected_impact: str, estimated_cost: float
+    ) -> Dict[str, Any]:
+        approved = expected_impact.strip().lower() in {"high", "critical"} and estimated_cost >= 0
+        return {
+            "experiment_id": experiment_id,
+            "approved": approved,
+            "expected_impact": expected_impact,
+            "estimated_cost": estimated_cost,
+        }
+
     def review_and_authorize_hypothesis(self, hypothesis: ResearchHypothesis) -> Dict[str, Any]:
         """Evaluates whether a proposed hypothesis warrants allocation of research resources."""
         is_high_impact = hypothesis.priority in (HypothesisPriority.HIGH, HypothesisPriority.CRITICAL)

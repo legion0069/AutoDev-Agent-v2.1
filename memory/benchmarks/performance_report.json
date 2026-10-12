@@ -1,0 +1,227 @@
+{
+  "cache_statistics": {
+    "files": 1500,
+    "hit_ratio": 0.5882352941176471,
+    "hits": 15000,
+    "invalidated": 0,
+    "misses": 10500,
+    "symbols": 6499,
+    "updated": 10500,
+    "warm_hit_ratio": 1.0,
+    "warm_hits": 15000,
+    "warm_miss_ratio": 0.0,
+    "warm_misses": 0
+  },
+  "comparison": {
+    "average_cache_rebuild_seconds": 0.001390484800140257,
+    "cache_hit_ratio": 0.5882352941176471,
+    "cache_miss_ratio": 0.4117647058823529,
+    "cold_index_peak_traced_bytes": 28143557,
+    "cold_orchestration_seconds": 7.0764000229974044,
+    "context_speedup_percent": 71.1,
+    "development_iteration_speedup_percent": 81.53,
+    "documentation_speedup_percent": 87.77,
+    "incremental_execution_seconds": 0.11466548699900159,
+    "index_speedup_percent": 93.26,
+    "repository_cache_bookkeeping_bytes": 406289,
+    "repository_cache_overhead_percent": 4.71,
+    "repository_graph_core_bytes": 8621289,
+    "symbol_cache_file_bytes": 5623765,
+    "symbol_graph_speedup_percent": 99.79,
+    "warm_cache_hit_ratio": 1.0,
+    "warm_cache_miss_ratio": 0.0,
+    "warm_index_peak_traced_bytes": 3085702,
+    "warm_orchestration_median_seconds": 1.3069081390021893,
+    "warm_peak_as_percent_of_cold_peak": 10.96
+  },
+  "measurement_notes": [
+    "Symbol graph baseline parses all source files into a new graph; the isolated incremental sample reparses one changed file in the cached graph without repository scanning or persistence.",
+    "Tracemalloc values are peak Python allocations for the indexing operation, not process RSS.",
+    "Cache-overhead percentage estimates retained Python bookkeeping and per-file hashes relative to the SymbolGraph object model; it excludes interpreter allocator overhead and disk-cache size.",
+    "Orchestration timings use Orchestrator.run with an injected no-op task planner and no task execution.",
+    "Synthetic workload measurements are environment-specific and are not a guarantee for other repositories."
+  ],
+  "memory_usage_bytes": {
+    "cold_index_peak_traced_bytes": 28143557,
+    "warm_index_peak_traced_bytes": 3085702
+  },
+  "subsystems": {
+    "cold_context_build": {
+      "count": 5,
+      "max": 0.1443,
+      "mean": 0.1218,
+      "median": 0.1176,
+      "min": 0.1128,
+      "p95": 0.1443
+    },
+    "cold_orchestration": {
+      "count": 1,
+      "max": 7.0764,
+      "mean": 7.0764,
+      "median": 7.0764,
+      "min": 7.0764,
+      "p95": 7.0764
+    },
+    "forced_full_index": {
+      "count": 5,
+      "max": 1.9119,
+      "mean": 1.7283,
+      "median": 1.7021,
+      "min": 1.6005,
+      "p95": 1.9119
+    },
+    "full_document_rewrite": {
+      "count": 50,
+      "max": 0.0004,
+      "mean": 0.0003,
+      "median": 0.0003,
+      "min": 0.0002,
+      "p95": 0.0003
+    },
+    "incremental_document_noop": {
+      "count": 50,
+      "max": 0.0016,
+      "mean": 0.0001,
+      "median": 0.0,
+      "min": 0.0,
+      "p95": 0.0001
+    },
+    "incremental_symbol_graph_update": {
+      "count": 10,
+      "max": 0.0035,
+      "mean": 0.0014,
+      "median": 0.0012,
+      "min": 0.001,
+      "p95": 0.0035
+    },
+    "standalone_symbol_graph_generation": {
+      "count": 5,
+      "max": 0.699,
+      "mean": 0.5798,
+      "median": 0.5577,
+      "min": 0.5252,
+      "p95": 0.699
+    },
+    "test_discovery": {
+      "count": 1,
+      "max": 0.0019,
+      "mean": 0.0019,
+      "median": 0.0019,
+      "min": 0.0019,
+      "p95": 0.0019
+    },
+    "warm_context_build": {
+      "count": 5,
+      "max": 0.0356,
+      "mean": 0.0343,
+      "median": 0.034,
+      "min": 0.0339,
+      "p95": 0.0356
+    },
+    "warm_incremental_index": {
+      "count": 10,
+      "max": 0.1483,
+      "mean": 0.1202,
+      "median": 0.1147,
+      "min": 0.1124,
+      "p95": 0.1483
+    },
+    "warm_orchestration": {
+      "count": 3,
+      "max": 1.4589,
+      "mean": 1.3463,
+      "median": 1.3069,
+      "min": 1.2732,
+      "p95": 1.4589
+    }
+  },
+  "test_selection": {
+    "available_test_files": 500,
+    "discovery_seconds": 0.0018577599985292181,
+    "fallback_to_full_suite": false,
+    "selected_paths": [
+      "tests/test_module_100.py"
+    ],
+    "selected_test_files": 1
+  },
+  "timestamp": 1791836936.9231646,
+  "v37_reasoning_benchmarks": {
+    "cache_statistics": {
+      "decision": {
+        "entries": 1,
+        "hit_ratio": 0.967741935483871,
+        "hits": 30,
+        "misses": 1,
+        "repairs": 0
+      },
+      "hypotheses": {
+        "entries": 1,
+        "hit_ratio": 0.967741935483871,
+        "hits": 30,
+        "misses": 1,
+        "repairs": 0
+      },
+      "knowledge": {
+        "entries": 1,
+        "hit_ratio": 0.967741935483871,
+        "hits": 30,
+        "misses": 1,
+        "repairs": 0
+      },
+      "reasoning": {
+        "entries": 1,
+        "hit_ratio": 0.967741935483871,
+        "hits": 30,
+        "misses": 1,
+        "repairs": 0
+      }
+    },
+    "measurements": {
+      "decision_cold": {
+        "median_seconds": 0.0012197479991300497,
+        "peak_traced_bytes": 144748
+      },
+      "decision_warm": {
+        "median_seconds": 0.0002431344983051531,
+        "peak_traced_bytes": 135862
+      },
+      "explainability_100_tasks": {
+        "median_seconds": 0.002199373000621563,
+        "peak_traced_bytes": 31507
+      },
+      "hypothesis_cold": {
+        "median_seconds": 0.0014151430004858412,
+        "peak_traced_bytes": 152943
+      },
+      "hypothesis_warm": {
+        "median_seconds": 0.00026483950023248326,
+        "peak_traced_bytes": 143300
+      },
+      "knowledge_cold": {
+        "median_seconds": 0.012789956999768037,
+        "peak_traced_bytes": 201025
+      },
+      "knowledge_warm": {
+        "median_seconds": 0.003280712502601091,
+        "peak_traced_bytes": 171661
+      },
+      "planning_100_tasks": {
+        "median_seconds": 0.07590405600058148,
+        "peak_traced_bytes": 1581182
+      },
+      "reasoning_cold": {
+        "median_seconds": 0.0012599529982253443,
+        "peak_traced_bytes": 145225
+      },
+      "reasoning_warm": {
+        "median_seconds": 0.00020810400019399822,
+        "peak_traced_bytes": 134567
+      }
+    },
+    "summary": {
+      "decision_speedup_percent": 80.07,
+      "reasoning_speedup_percent": 83.48,
+      "warm_cache_hit_ratio": 0.967742
+    }
+  }
+}

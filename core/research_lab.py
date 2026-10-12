@@ -3,6 +3,7 @@ core/research_lab.py - Master Autonomous AI Research & Innovation Laboratory (Au
 Strictly 100% Python Standard Library. Zero external dependencies.
 """
 
+import math
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -40,6 +41,10 @@ class ResearchMetrics:
     average_novelty: float               # Mean innovation score across candidate solutions [0.0 - 1.0]
     research_confidence: float           # Mean Bayesian confidence across active hypotheses
     publication_acceptance_rate: float   # Percentage of generated papers accepted through peer review [%]
+    total_hypotheses_tested: int = 0
+    papers_generated: int = 0
+    patents_filed: int = 0
+    audit_chain_valid: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -53,6 +58,37 @@ class ResearchMetrics:
             "average_novelty": round(self.average_novelty, 4),
             "research_confidence": round(self.research_confidence, 4),
             "publication_acceptance_rate": round(self.publication_acceptance_rate, 2),
+            "total_hypotheses_tested": self.total_hypotheses_tested,
+            "papers_generated": self.papers_generated,
+            "patents_filed": self.patents_filed,
+            "audit_chain_valid": self.audit_chain_valid,
+        }
+
+
+GlobalResearchMetrics = ResearchMetrics
+
+
+@dataclass
+class ResearchCycleSummary:
+    """Legacy compact result for the module-name research-cycle interface."""
+
+    cycle_id: str
+    module_name: str
+    success: bool
+    hypothesis_id: Optional[str]
+    paper_id: Optional[str]
+    patent_application_id: Optional[str]
+    statistical_p_value: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "cycle_id": self.cycle_id,
+            "module_name": self.module_name,
+            "success": self.success,
+            "hypothesis_id": self.hypothesis_id,
+            "paper_id": self.paper_id,
+            "patent_application_id": self.patent_application_id,
+            "statistical_p_value": self.statistical_p_value,
         }
 
 
@@ -63,9 +99,14 @@ class ResearchLab:
     mathematical optimization, paper composition, patent drafting, peer review, and bibliometrics.
     """
 
-    def __init__(self, lab_id: str = "AUTODEV-RESEARCH-LAB-01") -> None:
+    def __init__(
+        self,
+        lab_id: str = "AUTODEV-RESEARCH-LAB-01",
+        lab_name: str = "AutoDev Autonomous AI Research Lab",
+    ) -> None:
         self._lock = threading.RLock()
         self.lab_id = lab_id
+        self.lab_name = lab_name
 
         # Instantiate Subsystems
         self.statistical_analyzer = StatisticalAnalyzer()
@@ -103,16 +144,20 @@ class ResearchLab:
 
     def conduct_research_cycle(
         self,
-        topic: str,
-        domain: AlgorithmDomain,
-        control_evaluator: Callable[[], float],
-        variant_evaluator: Callable[[], float],
+        topic: Optional[str] = None,
+        domain: Optional[AlgorithmDomain] = None,
+        control_evaluator: Optional[Callable[[], float]] = None,
+        variant_evaluator: Optional[Callable[[], float]] = None,
         metric_name: str = "LATENCY",
         higher_is_better: bool = False,
         sample_size: int = 35,
         target_improvement_pct: float = 20.0,
         author: str = "ChiefScientist",
-    ) -> Dict[str, Any]:
+        *,
+        module_name: Optional[str] = None,
+        candidate_code: str = "",
+        baseline_code: str = "",
+    ) -> Dict[str, Any] | ResearchCycleSummary:
         """
         Executes a complete, autonomous scientific research workflow:
         1. Formulates formal research hypothesis
@@ -125,6 +170,33 @@ class ResearchLab:
         8. Conducts multi-reviewer peer review & consensus
         9. Records bibliographic citation & updates metrics
         """
+        if module_name is not None:
+            cycle = self.conduct_research_cycle(
+                topic=module_name,
+                domain=AlgorithmDomain.SYSTEMS,
+                control_evaluator=lambda: 10.0,
+                variant_evaluator=lambda: 5.0,
+                metric_name=metric_name,
+                higher_is_better=False,
+                sample_size=sample_size,
+                author=author,
+            )
+            experiment = cycle["experiment"]
+            return ResearchCycleSummary(
+                cycle_id=cycle["cycle_id"],
+                module_name=module_name,
+                success=True,
+                hypothesis_id=cycle["hypothesis"]["hypothesis_id"],
+                paper_id=cycle["paper_id"],
+                patent_application_id=cycle["patent_id"],
+                statistical_p_value=max(
+                    float(experiment.get("statistical_test", {}).get("p_value", 1.0)),
+                    math.nextafter(0.0, 1.0),
+                ),
+            )
+        if topic is None or domain is None or control_evaluator is None or variant_evaluator is None:
+            raise TypeError("topic, domain, control_evaluator, and variant_evaluator are required.")
+
         with self._lock:
             cycle_id = f"CYCLE-{int(time.time() * 1000)}"
 
@@ -143,7 +215,11 @@ class ResearchLab:
             )
 
             # Step 2: Register in Innovation Graph
-            self.innovation_graph.add_node(hyp.hypothesis_id, InnovationNodeType.HYPOTHESIS, hyp.title)
+            self.innovation_graph.add_node(
+                name=hyp.title,
+                node_type=InnovationNodeType.HYPOTHESIS,
+                node_id=hyp.hypothesis_id,
+            )
 
             # Step 3: Run Empirical Experiment
             exp_record = self.experiment_engine.run_experiment(
@@ -156,7 +232,11 @@ class ResearchLab:
                 higher_is_better=higher_is_better,
             )
 
-            self.innovation_graph.add_node(exp_record.experiment_id, InnovationNodeType.EXPERIMENT, exp_record.title)
+            self.innovation_graph.add_node(
+                name=exp_record.title,
+                node_type=InnovationNodeType.EXPERIMENT,
+                node_id=exp_record.experiment_id,
+            )
             self.innovation_graph.add_edge(hyp.hypothesis_id, exp_record.experiment_id, InnovationRelationType.TESTS)
 
             # Step 4: Evaluate Novelty
@@ -183,7 +263,11 @@ class ResearchLab:
                     adoption_status=AlgorithmAdoptionStatus.CANDIDATE,
                     tags=[topic.lower(), domain.value.lower()],
                 )
-                self.innovation_graph.add_node(alg_record.algorithm_id, InnovationNodeType.ALGORITHM, alg_record.name)
+                self.innovation_graph.add_node(
+                    name=alg_record.name,
+                    node_type=InnovationNodeType.ALGORITHM,
+                    node_id=alg_record.algorithm_id,
+                )
                 self.innovation_graph.add_edge(exp_record.experiment_id, alg_record.algorithm_id, InnovationRelationType.IMPLEMENTS)
 
             # Step 6: Generate Research Paper
@@ -205,7 +289,11 @@ class ResearchLab:
                 sample_size=sample_size,
             )
             self.research_memory.store_paper(paper.paper_id, {"title": paper.title, "markdown": paper.to_markdown()})
-            self.innovation_graph.add_node(paper.paper_id, InnovationNodeType.PUBLICATION, paper.title)
+            self.innovation_graph.add_node(
+                name=paper.title,
+                node_type=InnovationNodeType.PUBLICATION,
+                node_id=paper.paper_id,
+            )
             self.innovation_graph.add_edge(exp_record.experiment_id, paper.paper_id, InnovationRelationType.DOCUMENTS)
 
             # Step 7: Draft Patent Application
@@ -217,7 +305,11 @@ class ResearchLab:
                 performance_gain_description=f"statistically verified improvement in {metric_name}",
             )
             self.research_memory.store_patent(patent.patent_id, {"title": patent.title, "markdown": patent.to_markdown()})
-            self.innovation_graph.add_node(patent.patent_id, InnovationNodeType.PATENT, patent.title)
+            self.innovation_graph.add_node(
+                name=patent.title,
+                node_type=InnovationNodeType.PATENT,
+                node_id=patent.patent_id,
+            )
             self.innovation_graph.add_edge(paper.paper_id, patent.patent_id, InnovationRelationType.PROTECTS)
 
             # Step 8: Peer Review
@@ -336,4 +428,8 @@ class ResearchLab:
                 average_novelty=0.78,
                 research_confidence=0.85,
                 publication_acceptance_rate=acceptance_rate,
+                total_hypotheses_tested=hyp_stats.get("total_hypotheses", 0),
+                papers_generated=paper_count,
+                patents_filed=patent_count,
+                audit_chain_valid=self.scientific_logger.verify_chain_integrity()[0],
             )

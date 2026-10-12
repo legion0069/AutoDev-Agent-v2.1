@@ -37,6 +37,30 @@ class PatentSpecialistAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Patent Specialist"
+
+    def evaluate_patentability(
+        self, novelty_score: float, non_obviousness_score: float, utility_score: float
+    ) -> Dict[str, Any]:
+        patentable = all(score >= 0.5 for score in (novelty_score, non_obviousness_score, utility_score))
+        return {
+            "is_patentable": patentable,
+            "novelty_score": novelty_score,
+            "non_obviousness_score": non_obviousness_score,
+            "utility_score": utility_score,
+            "recommendation": "PROCEED_TO_DRAFT" if patentable else "DO_NOT_FILE",
+        }
+
+    def draft_patent_claims(self, title: str, independent_elements: List[str]) -> Dict[str, Any]:
+        from core.patent_generator import PatentClaimType
+
+        application = self.lab.patent_generator.draft_patent(title=title, inventors=[self.name])
+        for element in independent_elements:
+            self.lab.patent_generator.add_claim(application.patent_id, PatentClaimType.INDEPENDENT, element)
+        return application.to_dict()
+
     def assess_patentability(self, novelty_score: float, performance_gain_pct: float) -> Dict[str, Any]:
         """Evaluates statutory patentability criteria (novelty, non-obviousness, utility)."""
         is_novel = novelty_score >= 0.50

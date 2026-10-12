@@ -38,6 +38,22 @@ class StatisticalAnalystAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Statistical Analyst"
+
+    def analyze_comparative_data(
+        self, sample_a: List[float], sample_b: List[float], alpha: float = 0.05
+    ) -> Dict[str, Any]:
+        result = StatisticalAnalyzer.t_test_two_sample(sample_a, sample_b, alpha)
+        return {
+            "is_significant": result.is_significant,
+            "p_value": result.p_value,
+            "t_statistic": result.statistic,
+            "effect_size": result.effect_size,
+            "alpha": alpha,
+        }
+
     def analyze_dataset(self, data: List[float]) -> DescriptiveStatistics:
         """Computes comprehensive summary statistics for a sample dataset."""
         return StatisticalAnalyzer.summarize(data)

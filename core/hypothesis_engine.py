@@ -4,11 +4,16 @@ Strictly 100% Python Standard Library. Zero external dependencies.
 """
 
 import enum
+import hashlib
+import re
 import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+
+from core.reasoning_cache import ReasoningCache
 
 
 class HypothesisStatus(str, enum.Enum):
@@ -116,11 +121,22 @@ class HypothesisEngine:
     driving the research and experimentation lifecycle.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        project_root: str | Path = ".",
+        cache_manager: Optional[Any] = None,
+        cache_root: Optional[str | Path] = None,
+    ) -> None:
         self._lock = threading.RLock()
         self._hypotheses: Dict[str, ResearchHypothesis] = {}
         self._tag_index: Dict[str, Set[str]] = {}
         self._module_index: Dict[str, Set[str]] = {}
+        self._issue_cache = ReasoningCache(
+            "hypotheses",
+            project_root=project_root,
+            cache_manager=cache_manager,
+            cache_root=cache_root,
+        )
 
     def formulate(
         self,
@@ -371,6 +387,159 @@ class HypothesisEngine:
             confidence=0.82,
             priority=HypothesisPriority.HIGH,
             tags=["resilience", "retry", "reliability", module_name.lower()],
+        )
+
+    def generate(
+        self,
+        issue: str,
+        context: Optional[Dict[str, Any]] = None,
+        limit: int = 5,
+    ) -> List[ResearchHypothesis]:
+        """Generates stable issue hypotheses without changing legacy random-ID APIs."""
+        normalized_issue = str(issue or "").strip()
+        cache_key = {"issue": normalized_issue, "context": context or {}, "limit": limit}
+        cached = self._issue_cache.get(cache_key)
+        if isinstance(cached, list):
+            hypotheses = [self._issue_hypothesis_from_dict(item) for item in cached]
+        else:
+            causes = [
+                ("input_validation", "unvalidated or incomplete inputs"),
+                ("dependency_state", "an inconsistent dependency state"),
+                ("cache_invalidation", "stale cached state"),
+                ("ordering", "an execution-order dependency"),
+                ("error_handling", "an unhandled failure path"),
+            ]
+            issue_terms = set(re.findall(r"[a-z0-9_]+", normalized_issue.lower()))
+            relevant = [
+                item for item in causes
+                if set(item[1].split("_")) & issue_terms
+                or any(token in normalized_issue.lower() for token in item[0].split("_"))
+            ]
+            if not relevant:
+                relevant = causes[:3]
+            module_values = (context or {}).get("affected_modules", [])
+            if isinstance(module_values, str):
+                module_values = [module_values]
+            modules = sorted({str(module) for module in module_values if module})
+            hypotheses = []
+            for category, cause in relevant[:max(0, limit)]:
+                statement = f"If {cause} causes {normalized_issue}, addressing it will reduce recurrence."
+                digest = hashlib.sha256(
+                    f"{normalized_issue}\0{category}".encode("utf-8")
+                ).hexdigest()[:12].upper()
+                hypotheses.append(ResearchHypothesis(
+                    hypothesis_id=f"HYP-ISSUE-{digest}",
+                    statement=statement,
+                    rationale=f"Test the proposed {category.replace('_', ' ')} cause against the reported issue.",
+                    metric_target="issue_recurrence_rate",
+                    expected_effect_direction="decrease",
+                    priority=HypothesisPriority.MEDIUM,
+                    affected_modules=modules,
+                    evaluation_metric="issue_recurrence_rate",
+                    confidence=0.55 if relevant == causes[:3] else 0.65,
+                    tags=["issue", category],
+                    created_at=0.0,
+                ))
+            self._issue_cache.set(cache_key, [item.to_dict() for item in hypotheses])
+        with self._lock:
+            for hypothesis in hypotheses:
+                self._hypotheses[hypothesis.hypothesis_id] = hypothesis
+                for tag in hypothesis.tags:
+                    self._tag_index.setdefault(tag, set()).add(hypothesis.hypothesis_id)
+                for module in hypothesis.affected_modules:
+                    self._module_index.setdefault(module.lower(), set()).add(hypothesis.hypothesis_id)
+        return hypotheses
+
+    def rank(self, hypotheses: Optional[List[ResearchHypothesis]] = None) -> List[ResearchHypothesis]:
+        """Ranks hypotheses by confidence, priority, and stable identifier."""
+        values = list(hypotheses) if hypotheses is not None else list(self._hypotheses.values())
+        priority_order = {
+            HypothesisPriority.CRITICAL: 4,
+            HypothesisPriority.HIGH: 3,
+            HypothesisPriority.MEDIUM: 2,
+            HypothesisPriority.LOW: 1,
+        }
+        return sorted(
+            values,
+            key=lambda item: (
+                -item.confidence,
+                -priority_order.get(item.priority, 0),
+                item.hypothesis_id,
+            ),
+        )
+
+    def validate(
+        self,
+        hypothesis: ResearchHypothesis | str,
+        evidence: Any,
+        supported: bool = True,
+    ) -> Optional[ResearchHypothesis]:
+        """Records explicit evidence and updates the hypothesis lifecycle."""
+        with self._lock:
+            target = (
+                self._hypotheses.get(hypothesis)
+                if isinstance(hypothesis, str)
+                else self._hypotheses.get(hypothesis.hypothesis_id, hypothesis)
+            )
+            if target is None:
+                return None
+            evidence_text = (
+                "; ".join(sorted(str(item) for item in evidence))
+                if isinstance(evidence, (list, tuple, set))
+                else str(evidence or "")
+            )
+            target.evidence = evidence_text
+            target.evidence_summary = evidence_text
+            target.status = HypothesisStatus.VALIDATED if supported else HypothesisStatus.FALSIFIED
+            target.confidence = min(0.99, target.confidence + 0.1) if supported else max(0.01, target.confidence - 0.1)
+            return target
+
+    def learn(
+        self,
+        hypothesis: ResearchHypothesis | str,
+        outcome: Any,
+        supported: bool = True,
+    ) -> Optional[ResearchHypothesis]:
+        """Records a result as evidence through the same deterministic validation path."""
+        return self.validate(hypothesis, outcome, supported=supported)
+
+    def statistics(self) -> Dict[str, Any]:
+        return {
+            "hypotheses": self.get_summary_statistics(),
+            "cache": self._issue_cache.statistics(),
+        }
+
+    @staticmethod
+    def _issue_hypothesis_from_dict(value: Dict[str, Any]) -> ResearchHypothesis:
+        priority = value.get("priority", HypothesisPriority.MEDIUM.value)
+        status = value.get("status", HypothesisStatus.PROPOSED.value)
+        return ResearchHypothesis(
+            hypothesis_id=str(value["hypothesis_id"]),
+            statement=str(value.get("statement", "")),
+            rationale=str(value.get("rationale", "")),
+            metric_target=str(value.get("metric_target", "")),
+            expected_effect_direction=str(value.get("expected_effect_direction", "decrease")),
+            target_effect_size=float(value.get("target_effect_size", 0.0)),
+            priority=HypothesisPriority(priority),
+            status=HypothesisStatus(status),
+            p_value=value.get("p_value"),
+            effect_size=value.get("effect_size"),
+            evidence=str(value.get("evidence", "")),
+            rejection_reason=str(value.get("rejection_reason", "")),
+            title=str(value.get("title", "")),
+            description=str(value.get("description", "")),
+            expected_outcome=str(value.get("expected_outcome", "")),
+            affected_modules=list(value.get("affected_modules", [])),
+            evaluation_metric=str(value.get("evaluation_metric", "")),
+            target_improvement_pct=float(value.get("target_improvement_pct", 0.0)),
+            confidence=float(value.get("confidence", 0.0)),
+            dependencies=list(value.get("dependencies", [])),
+            author=str(value.get("author", "ChiefScientist")),
+            created_at=float(value.get("created_at", 0.0)),
+            validated_at=value.get("validated_at"),
+            experiment_ids=list(value.get("experiment_ids", [])),
+            evidence_summary=str(value.get("evidence_summary", "")),
+            tags=list(value.get("tags", [])),
         )
 
     def list_hypotheses(

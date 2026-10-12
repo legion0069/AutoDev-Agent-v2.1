@@ -1,83 +1,78 @@
 {
-  "project_name": "autodev_repo_test_h_z7gif9",
-  "project_root": "C:\\Users\\veruk\\AppData\\Local\\Temp\\autodev_repo_test_h_z7gif9",
-  "timestamp": "2026-10-09T15:22:08.217641+00:00",
-  "total_modules": 7,
-  "total_classes": 3,
+  "project_name": "autodev_repo_test_27yxcvjg",
+  "project_root": "/tmp/autodev_repo_test_27yxcvjg",
+  "timestamp": "2026-10-12T21:57:32.550897+00:00",
+  "total_modules": 11,
+  "total_classes": 0,
   "total_interfaces": 0,
-  "total_functions": 3,
-  "total_methods": 3,
-  "total_tests": 1,
-  "total_dependencies": 4,
-  "total_symbols": 9,
+  "total_functions": 0,
+  "total_methods": 0,
+  "total_tests": 0,
+  "total_dependencies": 0,
+  "total_symbols": 0,
   "largest_files": [
     {
-      "file": "services/order_service.py",
-      "lines_of_code": 80,
-      "symbols": 1
+      "file": "memory/ecosystem_cache/external_knowledge_cache.json",
+      "lines_of_code": 46,
+      "symbols": 0
     },
     {
-      "file": "repositories/order_repository.py",
-      "lines_of_code": 60,
-      "symbols": 1
+      "file": "memory/benchmarks/history.json",
+      "lines_of_code": 15,
+      "symbols": 0
     },
     {
-      "file": "controllers/order_controller.py",
-      "lines_of_code": 50,
-      "symbols": 1
+      "file": "memory/cache/cache_metadata.json",
+      "lines_of_code": 15,
+      "symbols": 0
     },
     {
-      "file": "utils/helpers.py",
-      "lines_of_code": 30,
-      "symbols": 1
+      "file": "memory/cache/code_index/hash_index.json",
+      "lines_of_code": 15,
+      "symbols": 0
     },
     {
-      "file": "tests/test_orders.py",
-      "lines_of_code": 25,
-      "symbols": 1
+      "file": "memory/cache/code_index/symbol_graph.pkl",
+      "lines_of_code": 15,
+      "symbols": 0
     }
   ],
   "most_connected_modules": [
     {
-      "file": "services/order_service.py",
-      "total_connections": 4,
-      "dependencies": 2,
-      "dependents": 2
-    },
-    {
-      "file": "controllers/order_controller.py",
-      "total_connections": 1,
-      "dependencies": 1,
+      "file": ".gitignore",
+      "total_connections": 0,
+      "dependencies": 0,
       "dependents": 0
     },
     {
-      "file": "repositories/order_repository.py",
-      "total_connections": 1,
+      "file": "memory/benchmarks/history.json",
+      "total_connections": 0,
       "dependencies": 0,
-      "dependents": 1
-    },
-    {
-      "file": "tests/test_orders.py",
-      "total_connections": 1,
-      "dependencies": 1,
       "dependents": 0
     },
     {
-      "file": "utils/helpers.py",
-      "total_connections": 1,
+      "file": "memory/cache/cache_metadata.json",
+      "total_connections": 0,
       "dependencies": 0,
-      "dependents": 1
+      "dependents": 0
+    },
+    {
+      "file": "memory/cache/code_index/hash_index.json",
+      "total_connections": 0,
+      "dependencies": 0,
+      "dependents": 0
+    },
+    {
+      "file": "memory/cache/code_index/symbol_graph.pkl",
+      "total_connections": 0,
+      "dependencies": 0,
+      "dependents": 0
     }
   ],
   "most_reused_classes": [],
-  "dead_code_candidates": [
-    "utils/helpers.py::_internal_calc (function)"
-  ],
+  "dead_code_candidates": [],
   "entry_points": [],
-  "public_apis": [
-    "controllers/order_controller.py::OrderController",
-    "controllers/order_controller.py::get_order"
-  ],
+  "public_apis": [],
   "config_files": [],
   "build_files": [],
   "package_managers": [],
@@ -89,45 +84,16 @@
         "Unified repository structure with co-located components."
       ],
       "layers_detected": [
-        "Presentation / API / CLI",
-        "Business Logic / Core",
         "Data Access / Repository",
-        "Infrastructure / Adapters",
-        "Testing & QA"
+        "Infrastructure / Adapters"
       ],
       "description": "Single deployable application with well-defined internal modular boundaries."
-    },
-    {
-      "pattern_name": "Layered Architecture",
-      "confidence": 0.85,
-      "matched_indicators": [
-        "Distinct separation of presentation, domain/business logic, and data access layers."
-      ],
-      "layers_detected": [
-        "Presentation / API / CLI",
-        "Business Logic / Core",
-        "Data Access / Repository",
-        "Infrastructure / Adapters",
-        "Testing & QA"
-      ],
-      "description": "Separates system concerns into hierarchical presentation, service/domain, and data persistence layers."
-    },
-    {
-      "pattern_name": "Service Layer",
-      "confidence": 0.75,
-      "matched_indicators": [
-        "Found 1 service modules: services/order_service.py"
-      ],
-      "layers_detected": [
-        "Business Logic / Core"
-      ],
-      "description": "Defines an application's boundary with a layer of services to encapsulate business workflows."
     },
     {
       "pattern_name": "Repository Pattern",
       "confidence": 0.7,
       "matched_indicators": [
-        "Found 1 repository/DAO modules: repositories/order_repository.py"
+        "Found 1 repository/DAO modules: memory/cache/repository_changes/snapshot.json"
       ],
       "layers_detected": [
         "Data Access / Repository"
@@ -137,36 +103,9 @@
   ],
   "architecture_layers": [
     {
-      "name": "Presentation / API / CLI",
-      "modules": [
-        "controllers/order_controller.py"
-      ],
-      "responsibilities": [
-        "Provides presentation / api / cli capabilities for 1 modules."
-      ],
-      "dependencies": [
-        "Business Logic / Core"
-      ],
-      "confidence": 0.6
-    },
-    {
-      "name": "Business Logic / Core",
-      "modules": [
-        "services/order_service.py"
-      ],
-      "responsibilities": [
-        "Provides business logic / core capabilities for 1 modules."
-      ],
-      "dependencies": [
-        "Data Access / Repository",
-        "Infrastructure / Adapters"
-      ],
-      "confidence": 0.6
-    },
-    {
       "name": "Data Access / Repository",
       "modules": [
-        "repositories/order_repository.py"
+        "memory/cache/repository_changes/snapshot.json"
       ],
       "responsibilities": [
         "Provides data access / repository capabilities for 1 modules."
@@ -178,27 +117,21 @@
       "name": "Infrastructure / Adapters",
       "modules": [
         ".gitignore",
-        "project_plan.json",
-        "utils/helpers.py"
+        "memory/benchmarks/history.json",
+        "memory/cache/cache_metadata.json",
+        "memory/cache/code_index/hash_index.json",
+        "memory/cache/code_index/symbol_graph.pkl",
+        "memory/cache/context/context_files.json",
+        "memory/cache/symbol_graph/symbol_graph.json",
+        "memory/code_index.json",
+        "memory/ecosystem_cache/external_knowledge_cache.json",
+        "project_plan.json"
       ],
       "responsibilities": [
-        "Provides infrastructure / adapters capabilities for 3 modules."
+        "Provides infrastructure / adapters capabilities for 10 modules."
       ],
       "dependencies": [],
-      "confidence": 0.8
-    },
-    {
-      "name": "Testing & QA",
-      "modules": [
-        "tests/test_orders.py"
-      ],
-      "responsibilities": [
-        "Provides testing & qa capabilities for 1 modules."
-      ],
-      "dependencies": [
-        "Business Logic / Core"
-      ],
-      "confidence": 0.6
+      "confidence": 1.0
     }
   ],
   "module_summaries": {
@@ -218,28 +151,149 @@
       "complexity": "LOW",
       "lines_of_code": 5
     },
-    "controllers/order_controller.py": {
-      "module_path": "controllers/order_controller.py",
-      "purpose": "Encapsulates OrderController business logic and data structures.",
+    "memory/benchmarks/history.json": {
+      "module_path": "memory/benchmarks/history.json",
+      "purpose": "Component module for history functionality.",
       "responsibilities": [
-        "Declares class abstractions: OrderController.",
-        "Integrates with 1 downstream dependencies."
+        "Maintains module-level configuration and utility exports."
       ],
-      "exports": [
-        "OrderController"
-      ],
-      "dependencies": [
-        "services/order_service.py"
-      ],
+      "exports": [],
+      "dependencies": [],
       "dependents": [],
-      "public_classes": [
-        "OrderController"
-      ],
+      "public_classes": [],
       "internal_classes": [],
       "functions": [],
       "risk": "LOW",
       "complexity": "LOW",
-      "lines_of_code": 50
+      "lines_of_code": 15
+    },
+    "memory/cache/cache_metadata.json": {
+      "module_path": "memory/cache/cache_metadata.json",
+      "purpose": "Component module for cache metadata functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/cache/code_index/hash_index.json": {
+      "module_path": "memory/cache/code_index/hash_index.json",
+      "purpose": "Component module for hash index functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/cache/code_index/symbol_graph.pkl": {
+      "module_path": "memory/cache/code_index/symbol_graph.pkl",
+      "purpose": "Component module for symbol graph functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/cache/context/context_files.json": {
+      "module_path": "memory/cache/context/context_files.json",
+      "purpose": "Component module for context files functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/cache/repository_changes/snapshot.json": {
+      "module_path": "memory/cache/repository_changes/snapshot.json",
+      "purpose": "Component module for snapshot functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/cache/symbol_graph/symbol_graph.json": {
+      "module_path": "memory/cache/symbol_graph/symbol_graph.json",
+      "purpose": "Component module for symbol graph functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 15
+    },
+    "memory/code_index.json": {
+      "module_path": "memory/code_index.json",
+      "purpose": "Component module for code index functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 7
+    },
+    "memory/ecosystem_cache/external_knowledge_cache.json": {
+      "module_path": "memory/ecosystem_cache/external_knowledge_cache.json",
+      "purpose": "Component module for external knowledge cache functionality.",
+      "responsibilities": [
+        "Maintains module-level configuration and utility exports."
+      ],
+      "exports": [],
+      "dependencies": [],
+      "dependents": [],
+      "public_classes": [],
+      "internal_classes": [],
+      "functions": [],
+      "risk": "LOW",
+      "complexity": "LOW",
+      "lines_of_code": 46
     },
     "project_plan.json": {
       "module_path": "project_plan.json",
@@ -256,121 +310,9 @@
       "risk": "LOW",
       "complexity": "LOW",
       "lines_of_code": 1
-    },
-    "repositories/order_repository.py": {
-      "module_path": "repositories/order_repository.py",
-      "purpose": "Encapsulates OrderRepository business logic and data structures.",
-      "responsibilities": [
-        "Declares class abstractions: OrderRepository."
-      ],
-      "exports": [
-        "OrderRepository"
-      ],
-      "dependencies": [],
-      "dependents": [
-        "services/order_service.py"
-      ],
-      "public_classes": [
-        "OrderRepository"
-      ],
-      "internal_classes": [],
-      "functions": [],
-      "risk": "LOW",
-      "complexity": "LOW",
-      "lines_of_code": 60
-    },
-    "services/order_service.py": {
-      "module_path": "services/order_service.py",
-      "purpose": "Encapsulates OrderService business logic and data structures.",
-      "responsibilities": [
-        "Declares class abstractions: OrderService.",
-        "Integrates with 2 downstream dependencies."
-      ],
-      "exports": [
-        "OrderService"
-      ],
-      "dependencies": [
-        "repositories/order_repository.py",
-        "utils/helpers.py"
-      ],
-      "dependents": [
-        "controllers/order_controller.py",
-        "tests/test_orders.py"
-      ],
-      "public_classes": [
-        "OrderService"
-      ],
-      "internal_classes": [],
-      "functions": [],
-      "risk": "MEDIUM",
-      "complexity": "LOW",
-      "lines_of_code": 80
-    },
-    "tests/test_orders.py": {
-      "module_path": "tests/test_orders.py",
-      "purpose": "Provides procedural routines for test_process_order.",
-      "responsibilities": [
-        "Implements helper/procedural functions: test_process_order.",
-        "Integrates with 1 downstream dependencies."
-      ],
-      "exports": [
-        "test_process_order"
-      ],
-      "dependencies": [
-        "services/order_service.py"
-      ],
-      "dependents": [],
-      "public_classes": [],
-      "internal_classes": [],
-      "functions": [
-        "test_process_order"
-      ],
-      "risk": "LOW",
-      "complexity": "LOW",
-      "lines_of_code": 25
-    },
-    "utils/helpers.py": {
-      "module_path": "utils/helpers.py",
-      "purpose": "Provides procedural routines for format_currency, _internal_calc.",
-      "responsibilities": [
-        "Implements helper/procedural functions: format_currency, _internal_calc."
-      ],
-      "exports": [
-        "format_currency"
-      ],
-      "dependencies": [],
-      "dependents": [
-        "services/order_service.py"
-      ],
-      "public_classes": [],
-      "internal_classes": [],
-      "functions": [
-        "_internal_calc",
-        "format_currency"
-      ],
-      "risk": "LOW",
-      "complexity": "LOW",
-      "lines_of_code": 30
     }
   },
-  "hotspots": [
-    {
-      "category": "high_fan_in",
-      "target": "services/order_service.py",
-      "score": 2.0,
-      "metric_name": "incoming_dependents",
-      "metric_value": 2,
-      "description": "Module 'services/order_service.py' is depended on by 2 other modules."
-    },
-    {
-      "category": "utility_class",
-      "target": "utils/helpers.py",
-      "score": 2.0,
-      "metric_name": "utility_functions",
-      "metric_value": 2,
-      "description": "Module 'utils/helpers.py' provides generic utility helpers across components."
-    }
-  ],
+  "hotspots": [],
   "circular_dependencies": [],
-  "summary": "Repository 'autodev_repo_test_h_z7gif9' consists of 7 modules, 3 classes, and 3 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 2 potential architectural hotspots."
+  "summary": "Repository 'autodev_repo_test_27yxcvjg' consists of 11 modules, 0 classes, and 0 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 0 potential architectural hotspots."
 }

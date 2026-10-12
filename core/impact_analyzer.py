@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from agents.task_planner_agent import Task
 
 from core.symbol_graph import Symbol, SymbolGraph, SymbolType, Visibility
+from core.change_detector import ChangeSet, RepositoryChangeDetector
 
 logger = logging.getLogger("AutoDev.ImpactAnalyzer")
 
@@ -194,6 +195,7 @@ class ImpactAnalyzer:
         max_depth: int = 3,
         index_path: Union[str, Path] = "memory/code_index.json",
         project_root: Optional[Union[str, Path]] = None,
+        change_detector: Optional[RepositoryChangeDetector] = None,
     ) -> None:
         """
         Initializes the ImpactAnalyzer.
@@ -207,6 +209,7 @@ class ImpactAnalyzer:
         self.project_root = Path(project_root).resolve() if project_root else Path.cwd()
         self.index_path = Path(index_path).resolve()
         self.max_depth = max_depth
+        self.change_detector = change_detector
         self.graph = symbol_graph if symbol_graph is not None else self._load_or_empty_graph()
 
     # -------------------------------------------------------------------------
@@ -462,6 +465,39 @@ class ImpactAnalyzer:
             "estimated_files": [norm_file],
         }
         return self.analyze_task(fake_task, graph=active_graph)
+
+    def select_tests(
+        self,
+        changed_files: List[str],
+        affected_symbols: Optional[List[str]] = None,
+        impact_report: Optional[ImpactReport] = None,
+    ) -> List[str]:
+        """Selects tests using impact reports and deterministic fallback rules."""
+        from core.test_selector import TestSelector
+
+        selector = TestSelector(
+            project_root=self.project_root,
+            impact_analyzer=self,
+        )
+        return selector.select_tests(
+            changed_files=changed_files,
+            affected_symbols=affected_symbols,
+            impact_report=impact_report,
+        )
+
+    def analyze_changes(
+        self,
+        changes: Optional[ChangeSet] = None,
+    ) -> Dict[str, ImpactReport]:
+        """Analyzes files classified by the shared repository change detector."""
+        if changes is None:
+            if self.change_detector is None:
+                raise ValueError("A ChangeSet or configured change detector is required.")
+            changes = self.change_detector.detect()
+        return {
+            path: self.analyze_file(path)
+            for path in changes.changed_source_files
+        }
 
     # -------------------------------------------------------------------------
     # Individual Analysis Pipeline Steps

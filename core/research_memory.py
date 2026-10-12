@@ -45,6 +45,7 @@ class ResearchSuccess:
     performance_gain_pct: float
     impact_level: str = "HIGH"          # MODERATE, HIGH, TRANSFORMATIVE
     timestamp: float = field(default_factory=time.time)
+    reproducibility_hash: str = ""
 
 
 @dataclass
@@ -111,17 +112,50 @@ class ResearchMemory:
     # Failures & Successes
     # -------------------------------------------------------------------------
 
-    def record_failure(self, experiment_id: str, description: str, root_cause: str, lessons_learned: str, tags: Optional[List[str]] = None) -> ResearchFailure:
+    def record_failure(
+        self,
+        experiment_id: str = "",
+        description: str = "",
+        root_cause: str = "",
+        lessons_learned: str = "",
+        tags: Optional[List[str]] = None,
+        *,
+        hypothesis_statement: Optional[str] = None,
+    ) -> ResearchFailure:
         with self._lock:
             fid = f"FAIL-{uuid.uuid4().hex[:8].upper()}"
-            fail = ResearchFailure(fid, experiment_id, description, root_cause, lessons_learned, tags or [])
+            fail = ResearchFailure(
+                fid,
+                experiment_id,
+                description or hypothesis_statement or "",
+                root_cause,
+                lessons_learned,
+                tags or [],
+            )
             self._failures[fid] = fail
             return fail
 
-    def record_success(self, experiment_id: str, breakthrough_summary: str, performance_gain_pct: float, impact_level: str = "HIGH") -> ResearchSuccess:
+    def record_success(
+        self,
+        experiment_id: str = "",
+        breakthrough_summary: str = "",
+        performance_gain_pct: float = 0.0,
+        impact_level: str = "HIGH",
+        *,
+        innovation_name: Optional[str] = None,
+        impact_summary: Optional[str] = None,
+        reproducibility_hash: str = "",
+    ) -> ResearchSuccess:
         with self._lock:
             sid = f"SUCC-{uuid.uuid4().hex[:8].upper()}"
-            succ = ResearchSuccess(sid, experiment_id, breakthrough_summary, performance_gain_pct, impact_level)
+            succ = ResearchSuccess(
+                sid,
+                experiment_id or innovation_name or "",
+                breakthrough_summary or impact_summary or "",
+                performance_gain_pct,
+                impact_level,
+                reproducibility_hash=reproducibility_hash,
+            )
             self._successes[sid] = succ
             return succ
 
@@ -129,19 +163,65 @@ class ResearchMemory:
     # Notes & Future Work
     # -------------------------------------------------------------------------
 
-    def add_note(self, title: str, content: str, author: str = "Researcher", tags: Optional[List[str]] = None) -> ResearchNote:
+    def add_note(
+        self,
+        title: str,
+        content: str = "",
+        author: str = "Researcher",
+        tags: Optional[List[str]] = None,
+    ) -> ResearchNote:
         with self._lock:
             nid = f"NOTE-{uuid.uuid4().hex[:8].upper()}"
-            note = ResearchNote(nid, title, content, author, tags or [])
+            note = ResearchNote(nid, title, content or title, author, tags or [])
             self._notes[nid] = note
             return note
 
-    def add_future_work(self, title: str, description: str, domain: str = "General", estimated_effort: str = "MEDIUM", tags: Optional[List[str]] = None) -> FutureWorkItem:
+    def add_future_work(
+        self,
+        title: str,
+        description: str = "",
+        domain: str = "General",
+        estimated_effort: str = "MEDIUM",
+        tags: Optional[List[str]] = None,
+        *,
+        priority: Optional[str] = None,
+    ) -> FutureWorkItem:
         with self._lock:
             fwid = f"FW-{uuid.uuid4().hex[:8].upper()}"
-            fw = FutureWorkItem(fwid, title, description, domain, estimated_effort, tags or [])
+            fw = FutureWorkItem(
+                fwid,
+                title,
+                description,
+                domain,
+                priority or estimated_effort,
+                tags or [],
+            )
             self._future_work[fwid] = fw
             return fw
+
+    def get_ideas(self) -> List[ResearchIdea]:
+        return self.list_ideas()
+
+    def get_failures(self) -> List[ResearchFailure]:
+        with self._lock:
+            return list(self._failures.values())
+
+    def get_successes(self) -> List[ResearchSuccess]:
+        with self._lock:
+            return list(self._successes.values())
+
+    def get_future_work(self) -> List[FutureWorkItem]:
+        with self._lock:
+            return list(self._future_work.values())
+
+    def search_notes(self, query: str) -> List[ResearchNote]:
+        normalized = query.casefold()
+        with self._lock:
+            return [
+                note
+                for note in self._notes.values()
+                if normalized in note.title.casefold() or normalized in note.content.casefold()
+            ]
 
     # -------------------------------------------------------------------------
     # Experiments, Benchmarks, Papers, Patents Storage

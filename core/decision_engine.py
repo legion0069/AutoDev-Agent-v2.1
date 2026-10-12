@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.organization_state import OrganizationState
+from core.reasoning_cache import ReasoningCache
 
 logger = logging.getLogger("AutoDev.Org.DecisionEngine")
 
@@ -112,10 +113,111 @@ class DecisionEngine:
         "Operations": 3.0,
     }
 
-    def __init__(self, state: Optional[OrganizationState] = None) -> None:
+    def __init__(
+        self,
+        state: Optional[OrganizationState] = None,
+        cache_manager: Optional[Any] = None,
+        project_root: str = ".",
+        cache_root: Optional[str] = None,
+    ) -> None:
         self._lock = threading.RLock()
         self.state = state
         self._proposals: Dict[str, DecisionProposal] = {}
+        self._strategy_cache = ReasoningCache(
+            "decisions",
+            project_root=project_root,
+            cache_manager=cache_manager,
+            cache_root=cache_root,
+        )
+
+    def rank_options(
+        self,
+        options: List[Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Ranks engineering options with stable weighted scoring and explicit tradeoffs."""
+        option_data = [self._strategy_option(option) for option in options]
+        cache_key = {"options": option_data, "context": context or {}}
+        cached = self._strategy_cache.get(cache_key)
+        if isinstance(cached, list):
+            return cached
+        weights = {
+            "benefit": 0.20,
+            "impact": 0.15,
+            "quality": 0.15,
+            "maintainability": 0.15,
+            "evidence": 0.10,
+            "historical_success": 0.10,
+            "cost": -0.05,
+            "risk": -0.05,
+            "complexity": -0.05,
+        }
+        ranked = []
+        for option in option_data:
+            components = {
+                name: self._normalized_score(option.get(name, 0.5 if name not in {"cost", "risk", "complexity"} else 0.0))
+                for name in weights
+            }
+            score = max(0.0, min(1.0, sum(components[name] * weight for name, weight in weights.items())))
+            positive = sorted(
+                name for name, weight in weights.items() if weight > 0 and components[name] >= 0.7
+            )
+            tradeoffs = sorted(
+                name for name, weight in weights.items() if weight < 0 and components[name] >= 0.5
+            )
+            name = str(option.get("name", option.get("id", "option")))
+            ranked.append({
+                "option": option,
+                "name": name,
+                "score": round(score, 4),
+                "confidence": round(min(0.95, 0.5 + abs(score - 0.5)), 4),
+                "evidence": positive,
+                "tradeoffs": tradeoffs,
+            })
+        ranked.sort(key=lambda item: (-item["score"], item["name"]))
+        self._strategy_cache.set(cache_key, ranked)
+        return ranked
+
+    def score_options(
+        self,
+        options: List[Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Compatibility-friendly alias for :meth:`rank_options`."""
+        return self.rank_options(options, context)
+
+    def choose_best(
+        self,
+        options: List[Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Returns the highest-ranked option, or ``None`` when no options were supplied."""
+        ranked = self.rank_options(options, context)
+        return ranked[0] if ranked else None
+
+    def statistics(self) -> Dict[str, int | float]:
+        """Returns in-process statistics for deterministic strategy scoring."""
+        return self._strategy_cache.statistics()
+
+    @staticmethod
+    def _strategy_option(option: Any) -> Dict[str, Any]:
+        if isinstance(option, dict):
+            return {str(key): value for key, value in sorted(option.items(), key=lambda pair: str(pair[0]))}
+        if hasattr(option, "to_dict"):
+            return DecisionEngine._strategy_option(option.to_dict())
+        if hasattr(option, "__dict__"):
+            return DecisionEngine._strategy_option(option.__dict__)
+        return {"name": str(option)}
+
+    @staticmethod
+    def _normalized_score(value: Any) -> float:
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if score > 1.0:
+            score /= 100.0
+        return max(0.0, min(1.0, score))
 
     def create_proposal(
         self,

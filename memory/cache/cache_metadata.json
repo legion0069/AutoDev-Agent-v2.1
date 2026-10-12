@@ -1,0 +1,62 @@
+{
+  "code_index": {
+    "created_at": 1791829078.102997,
+    "entry_count": 2,
+    "hit_count": 71,
+    "hit_ratio": 0.8452380952380952,
+    "last_accessed": 1791842235.2920938,
+    "miss_count": 13,
+    "name": "code_index",
+    "path": "/workspaces/AutoDev-Agent/memory/cache/code_index",
+    "size_bytes": 8822781,
+    "version": "3.6.1"
+  },
+  "reasoning/decisions": {
+    "created_at": 1791838980.5175962,
+    "entry_count": 0,
+    "hit_count": 0,
+    "hit_ratio": 0.0,
+    "last_accessed": 1791838980.5175962,
+    "miss_count": 0,
+    "name": "reasoning/decisions",
+    "path": "/workspaces/AutoDev-Agent/memory/cache/reasoning/decisions",
+    "size_bytes": 0,
+    "version": "1"
+  },
+  "reasoning/hypotheses": {
+    "created_at": 1791838980.518546,
+    "entry_count": 0,
+    "hit_count": 0,
+    "hit_ratio": 0.0,
+    "last_accessed": 1791838980.518546,
+    "miss_count": 0,
+    "name": "reasoning/hypotheses",
+    "path": "/workspaces/AutoDev-Agent/memory/cache/reasoning/hypotheses",
+    "size_bytes": 0,
+    "version": "1"
+  },
+  "reasoning/knowledge": {
+    "created_at": 1791838980.5213156,
+    "entry_count": 0,
+    "hit_count": 0,
+    "hit_ratio": 0.0,
+    "last_accessed": 1791838980.5213156,
+    "miss_count": 0,
+    "name": "reasoning/knowledge",
+    "path": "/workspaces/AutoDev-Agent/memory/cache/reasoning/knowledge",
+    "size_bytes": 0,
+    "version": "1"
+  },
+  "reasoning/summaries": {
+    "created_at": 1791838980.5147338,
+    "entry_count": 0,
+    "hit_count": 0,
+    "hit_ratio": 0.0,
+    "last_accessed": 1791838980.5147338,
+    "miss_count": 0,
+    "name": "reasoning/summaries",
+    "path": "/workspaces/AutoDev-Agent/memory/cache/reasoning/summaries",
+    "size_bytes": 0,
+    "version": "1"
+  }
+}

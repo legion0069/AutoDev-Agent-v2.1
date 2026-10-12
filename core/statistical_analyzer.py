@@ -89,10 +89,13 @@ class HypothesisTestResult:
     degrees_of_freedom: Optional[float] = None
     effect_size: Optional[float] = None
     interpretation: str = ""
+    conclusion: Optional[str] = None
 
-    @property
-    def conclusion(self) -> str:
-        return self.interpretation
+    def __post_init__(self) -> None:
+        if self.conclusion and not self.interpretation:
+            self.interpretation = self.conclusion
+        elif self.interpretation and not self.conclusion:
+            self.conclusion = self.interpretation
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -104,7 +107,7 @@ class HypothesisTestResult:
             "degrees_of_freedom": round(self.degrees_of_freedom, 4) if self.degrees_of_freedom is not None else None,
             "effect_size": round(self.effect_size, 6) if self.effect_size is not None else None,
             "interpretation": self.interpretation,
-            "conclusion": self.interpretation,
+            "conclusion": self.conclusion or self.interpretation,
         }
 
 
@@ -182,6 +185,14 @@ class StatisticalAnalyzer:
     @staticmethod
     def std_dev(data: List[float], sample: bool = True) -> float:
         return math.sqrt(StatisticalAnalyzer.variance(data, sample=sample))
+
+    @staticmethod
+    def skewness(data: List[float]) -> float:
+        return StatisticalAnalyzer.summarize(data).skewness
+
+    @staticmethod
+    def kurtosis(data: List[float]) -> float:
+        return StatisticalAnalyzer.summarize(data).kurtosis
 
     @staticmethod
     def percentile(data: List[float], p: float) -> float:
@@ -432,7 +443,7 @@ class StatisticalAnalyzer:
             return HypothesisTestResult(
                 test_name="Welch's Two-Sample t-test",
                 statistic=0.0,
-                p_value=1.0 if abs(ma - mb) < 1e-12 else 0.0,
+                p_value=1.0 if abs(ma - mb) < 1e-12 else math.nextafter(0.0, 1.0),
                 alpha=alpha,
                 is_significant=abs(ma - mb) >= 1e-12,
                 interpretation="Zero variance in samples",
@@ -776,7 +787,7 @@ class StatisticalAnalyzer:
         b = 0.5
         # Continued fraction approximation for I_x(a, b)
         p = StatisticalAnalyzer._incomplete_beta(x, a, b)
-        return max(0.0, min(1.0, p))
+        return max(math.nextafter(0.0, 1.0), min(1.0, p))
 
     @staticmethod
     def _chi2_p_value(chi2: float, df: int) -> float:
@@ -795,19 +806,59 @@ class StatisticalAnalyzer:
             return 0.0
         if x >= 1.0:
             return 1.0
-        # Use series or normal approximation
-        # For our t-test approximation:
-        log_beta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
-        factor = math.exp(a * math.log(x) + b * math.log(1.0 - x) - log_beta) / a
-        # Hypergeometric series expansion
-        term = 1.0
-        sum_val = 1.0
-        for n in range(1, 40):
-            term *= ((a + n - 1) * (1.0 - b + n - 1) / (a + n)) * (x / n)
-            sum_val += term
-            if abs(term) < 1e-8:
+        log_factor = (
+            math.lgamma(a + b)
+            - math.lgamma(a)
+            - math.lgamma(b)
+            + a * math.log(x)
+            + b * math.log1p(-x)
+        )
+        factor = math.exp(log_factor)
+        if x < (a + 1.0) / (a + b + 2.0):
+            result = factor * StatisticalAnalyzer._beta_continued_fraction(a, b, x) / a
+        else:
+            result = 1.0 - factor * StatisticalAnalyzer._beta_continued_fraction(b, a, 1.0 - x) / b
+        return max(0.0, min(1.0, result))
+
+    @staticmethod
+    def _beta_continued_fraction(a: float, b: float, x: float) -> float:
+        """Evaluates the incomplete-beta continued fraction with Lentz's method."""
+        max_iterations = 200
+        epsilon = 3.0e-14
+        tiny = 1.0e-300
+        qab = a + b
+        qap = a + 1.0
+        qam = a - 1.0
+        c = 1.0
+        d = 1.0 - qab * x / qap
+        if abs(d) < tiny:
+            d = tiny
+        d = 1.0 / d
+        result = d
+        for iteration in range(1, max_iterations + 1):
+            m2 = 2 * iteration
+            aa = iteration * (b - iteration) * x / ((qam + m2) * (a + m2))
+            d = 1.0 + aa * d
+            if abs(d) < tiny:
+                d = tiny
+            c = 1.0 + aa / c
+            if abs(c) < tiny:
+                c = tiny
+            d = 1.0 / d
+            result *= d * c
+            aa = -(a + iteration) * (qab + iteration) * x / ((a + m2) * (qap + m2))
+            d = 1.0 + aa * d
+            if abs(d) < tiny:
+                d = tiny
+            c = 1.0 + aa / c
+            if abs(c) < tiny:
+                c = tiny
+            d = 1.0 / d
+            delta = d * c
+            result *= delta
+            if abs(delta - 1.0) < epsilon:
                 break
-        return max(0.0, min(1.0, factor * sum_val))
+        return result
 
     @staticmethod
     def _upper_gamma(s: float, z: float) -> float:

@@ -6,8 +6,16 @@ Strictly 100% Python Standard Library. Zero external dependencies.
 import threading
 import time
 import uuid
+import enum
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
+
+
+class PatentClaimType(str, enum.Enum):
+    """Legacy independent/dependent claim classification."""
+
+    INDEPENDENT = "INDEPENDENT"
+    DEPENDENT = "DEPENDENT"
 
 
 @dataclass
@@ -17,6 +25,14 @@ class PatentClaim:
     is_independent: bool
     text: str
     depends_on: Optional[int] = None
+
+    @property
+    def claim_type(self) -> PatentClaimType:
+        return PatentClaimType.INDEPENDENT if self.is_independent else PatentClaimType.DEPENDENT
+
+    @property
+    def claim_text(self) -> str:
+        return self.text
 
     def format_text(self) -> str:
         if self.is_independent:
@@ -40,6 +56,14 @@ class PatentApplication:
     industrial_applications: str
     created_at: float = field(default_factory=time.time)
 
+    @property
+    def application_id(self) -> str:
+        return self.patent_id
+
+    @property
+    def field_of_invention(self) -> str:
+        return self.technical_field
+
     def to_markdown(self) -> str:
         """Renders the patent specification into standardized legal patent draft Markdown."""
         inventors_str = ", ".join(self.inventors)
@@ -48,7 +72,9 @@ class PatentApplication:
         claims_lines = [c.format_text() for c in self.claims]
         claims_formatted = "\n\n".join(claims_lines)
 
-        return f"""# UNITED STATES PATENT AND TRADEMARK OFFICE SPECIFICATION
+        return f"""# PATENT APPLICATION SPECIFICATION
+
+UNITED STATES PATENT AND TRADEMARK OFFICE
 
 **TITLE:** {self.title}  
 **DOCKET / PATENT ID:** `{self.patent_id}`  
@@ -86,6 +112,32 @@ What is claimed is:
 {claims_formatted}
 """
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "patent_id": self.patent_id,
+            "application_id": self.application_id,
+            "title": self.title,
+            "inventors": list(self.inventors),
+            "abstract": self.abstract,
+            "technical_field": self.technical_field,
+            "field_of_invention": self.field_of_invention,
+            "background": self.background,
+            "summary": self.summary,
+            "detailed_description": self.detailed_description,
+            "claims": [
+                {
+                    "claim_number": claim.claim_number,
+                    "claim_type": claim.claim_type.value,
+                    "claim_text": claim.claim_text,
+                    "depends_on": claim.depends_on,
+                }
+                for claim in self.claims
+            ],
+            "advantages": self.advantages,
+            "industrial_applications": self.industrial_applications,
+            "created_at": self.created_at,
+        }
+
 
 class PatentGenerator:
     """
@@ -100,15 +152,16 @@ class PatentGenerator:
     def draft_patent(
         self,
         title: str,
-        inventors: List[str],
-        abstract: str,
-        technical_field: str,
-        background: str,
-        summary: str,
-        detailed_description: str,
-        claims: List[PatentClaim],
-        advantages: str,
-        industrial_applications: str,
+        inventors: Optional[List[str]] = None,
+        abstract: str = "",
+        technical_field: str = "",
+        background: str = "",
+        summary: str = "",
+        detailed_description: str = "",
+        claims: Optional[List[PatentClaim]] = None,
+        advantages: str = "",
+        industrial_applications: str = "",
+        field_of_invention: Optional[str] = None,
     ) -> PatentApplication:
         """Assembles a formal patent application."""
         with self._lock:
@@ -116,18 +169,54 @@ class PatentGenerator:
             patent = PatentApplication(
                 patent_id=pid,
                 title=title,
-                inventors=inventors,
+                inventors=list(inventors or []),
                 abstract=abstract,
-                technical_field=technical_field,
+                technical_field=field_of_invention or technical_field,
                 background=background,
                 summary=summary,
                 detailed_description=detailed_description,
-                claims=claims,
+                claims=list(claims or []),
                 advantages=advantages,
                 industrial_applications=industrial_applications,
             )
             self._patents[pid] = patent
             return patent
+
+    def add_claim(
+        self,
+        application_id: str,
+        claim_type: PatentClaimType,
+        claim_text: str,
+        depends_on: Optional[int] = None,
+    ) -> PatentClaim:
+        with self._lock:
+            application = self._patents.get(application_id)
+            if application is None:
+                raise KeyError(f"Patent application {application_id!r} not found")
+            kind = PatentClaimType(claim_type)
+            if kind is PatentClaimType.DEPENDENT and depends_on is None:
+                raise ValueError("Dependent claims must specify depends_on.")
+            claim = PatentClaim(
+                claim_number=len(application.claims) + 1,
+                is_independent=kind is PatentClaimType.INDEPENDENT,
+                text=claim_text,
+                depends_on=depends_on,
+            )
+            application.claims.append(claim)
+            return claim
+
+    def get_application(self, application_id: str) -> Optional[PatentApplication]:
+        return self.get_patent(application_id)
+
+    def get_all_applications(self) -> List[PatentApplication]:
+        with self._lock:
+            return list(self._patents.values())
+
+    def render_specification(self, application_id: str) -> str:
+        application = self.get_patent(application_id)
+        if application is None:
+            raise KeyError(f"Patent application {application_id!r} not found")
+        return application.to_markdown()
 
     def synthesize_from_algorithm(
         self,

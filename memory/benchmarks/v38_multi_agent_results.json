@@ -1,0 +1,57 @@
+{
+  "iterations": 30,
+  "measurement": "single local run; values are descriptive, not performance guarantees",
+  "metrics": {
+    "agent_dispatch_latency": {
+      "iterations": 30,
+      "mean_seconds": 0.00062671,
+      "median_seconds": 0.00058157,
+      "p95_seconds": 0.00083443
+    },
+    "blackboard_read_write_latency": {
+      "iterations": 30,
+      "mean_seconds": 2.832e-05,
+      "median_seconds": 2.526e-05,
+      "p95_seconds": 3.767e-05
+    },
+    "collaboration_planning_latency": {
+      "iterations": 30,
+      "mean_seconds": 0.0002901,
+      "median_seconds": 0.00022112,
+      "p95_seconds": 0.0005434
+    },
+    "consensus_latency": {
+      "iterations": 30,
+      "mean_seconds": 0.00019079,
+      "median_seconds": 0.00014827,
+      "p95_seconds": 0.00022456
+    },
+    "message_count": 300,
+    "message_throughput_per_second": 6138.61,
+    "parallel_scheduler": {
+      "efficiency": 0.67,
+      "parallel_seconds": 0.01199738,
+      "serial_seconds": 0.0321543,
+      "speedup": 2.6801,
+      "task_count": 30
+    },
+    "task_negotiation_latency": {
+      "iterations": 30,
+      "mean_seconds": 0.00011056,
+      "median_seconds": 0.00010317,
+      "p95_seconds": 0.00013857
+    },
+    "tracemalloc_peak_overhead_bytes": 1063694,
+    "warm_cache_hit_ratio": 1.0,
+    "warm_cache_statistics": {
+      "files": 20,
+      "hit_ratio": 1.0,
+      "hits": 20,
+      "invalidated": 0,
+      "misses": 0,
+      "symbols": 20,
+      "updated": 0
+    }
+  },
+  "version": "3.8"
+}

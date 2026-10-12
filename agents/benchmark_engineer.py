@@ -6,6 +6,7 @@ Strictly 100% Python Standard Library. Zero external dependencies.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from core.benchmark_framework import BenchmarkMetric, BenchmarkProfile, BenchmarkResult
@@ -36,6 +37,28 @@ class BenchmarkEngineerAgent:
 
         if self.bus:
             self.bus.register_entity(self.name)
+
+    @property
+    def role(self) -> str:
+        return "Benchmark Engineer"
+
+    def profile_execution(self, name: str, target_fn: Callable[[], Any], iterations: int = 5) -> Dict[str, Any]:
+        """Measures repeated execution and returns a compact legacy benchmark record."""
+        if iterations < 1:
+            raise ValueError("iterations must be at least one")
+        durations = []
+        for _ in range(iterations):
+            started = time.perf_counter()
+            target_fn()
+            durations.append((time.perf_counter() - started) * 1000.0)
+        mean_ms = sum(durations) / len(durations)
+        return {
+            "name": name,
+            "iterations": iterations,
+            "latency_mean_ms": mean_ms,
+            "latency_min_ms": min(durations),
+            "latency_max_ms": max(durations),
+        }
 
     def register_benchmark(
         self,

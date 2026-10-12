@@ -25,13 +25,14 @@ Coordinates the complete multi-task autonomous software engineering lifecycle:
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 # Ensure project root is available on sys.path for direct execution
 if __name__ == "__main__" and __package__ is None:
@@ -67,10 +68,25 @@ from core.change_execution_planner import (
     ValidationGate,
 )
 from core.change_planner import ChangePlan, ChangePlanner
+from core.cache_manager import CacheManager
+from core.change_detector import ChangeSet, RepositoryChangeDetector
 from core.code_context_retriever import CodeContextRetriever
 from core.context_builder import ContextBuilder
+from core.doc_incremental_builder import DocIncrementalBuilder
 from core.impact_analyzer import ImpactAnalyzer
+from core.incremental_indexer import IncrementalIndexer
 from core.llm import BaseLLM
+from core.performance_profiler import PerformanceProfiler
+from core.agent_metrics import AgentMetricsTracker
+from core.collaboration_engine import CollaborationEngine as V38CollaborationEngine
+from core.multi_agent.agent_registry import AgentDescriptor, AgentRole
+from core.multi_agent_runtime import MultiAgentRuntime
+from core.decision_engine import DecisionEngine as StrategyDecisionEngine
+from core.explainability import ExplainabilityEngine
+from core.hypothesis_engine import HypothesisEngine
+from core.knowledge_reasoner import KnowledgeReasoner
+from core.planning_revision import PlanningRevisionEngine
+from core.reasoning_engine import ReasoningEngine
 from core.refactoring_planner import RefactoringPlan, RefactoringPlanner
 from core.repository_analyzer import RepositoryAnalyzer, RepositoryOverview
 from core.requirement_planner import RequirementPlanner
@@ -88,6 +104,7 @@ from core.quality_models import QualityAssessmentResult, QualityGateStatus
 from core.predictive_quality_engine import PredictiveQualityEngine
 from core.retry_engine import RetryEngine, RetryResult
 from core.state_manager import ExecutionRecord, ProjectState, StateManager
+from core.test_selector import TestSelector
 from core.collaboration import (
     CollaborationManager,
     CollaborationConfig,
@@ -305,6 +322,21 @@ class Orchestrator:
         enterprise_organization: Optional[Any] = None,
         enterprise_federation: Optional[Any] = None,
         research_lab: Optional[Any] = None,
+        cache_manager: Optional[CacheManager] = None,
+        change_detector: Optional[RepositoryChangeDetector] = None,
+        incremental_indexer: Optional[IncrementalIndexer] = None,
+        test_selector: Optional[TestSelector] = None,
+        doc_incremental_builder: Optional[DocIncrementalBuilder] = None,
+        performance_profiler: Optional[PerformanceProfiler] = None,
+        reasoning_engine: Optional[ReasoningEngine] = None,
+        planning_revision_engine: Optional[PlanningRevisionEngine] = None,
+        strategy_decision_engine: Optional[StrategyDecisionEngine] = None,
+        hypothesis_engine: Optional[HypothesisEngine] = None,
+        knowledge_reasoner: Optional[KnowledgeReasoner] = None,
+        explainability_engine: Optional[ExplainabilityEngine] = None,
+        multi_agent_runtime: Optional[MultiAgentRuntime] = None,
+        collaboration_engine: Optional[V38CollaborationEngine] = None,
+        agent_metrics_tracker: Optional[AgentMetricsTracker] = None,
     ) -> None:
         """
         Initializes Orchestrator Version 3 with injectable subsystems (v2.0 - v3.0).
@@ -325,6 +357,20 @@ class Orchestrator:
         self.requirement_planner = requirement_planner
 
         # Dependency Injection / Subsystem Defaults
+        self.cache_manager = cache_manager or CacheManager(
+            self.project_root / "memory" / "cache"
+        )
+        self.change_detector = change_detector or RepositoryChangeDetector(self.project_root)
+        self.incremental_indexer = incremental_indexer or IncrementalIndexer(
+            project_root=self.project_root,
+            change_detector=self.change_detector,
+            cache_manager=self.cache_manager,
+        )
+        self.performance_profiler = performance_profiler or PerformanceProfiler(
+            history_file=self.project_root / "memory" / "benchmarks" / "history.json",
+            report_file=self.project_root / "memory" / "benchmarks" / "performance_report.json",
+            cache_manager=self.cache_manager,
+        )
         self.state_manager = state_manager or StateManager(
             state_path=self.state_path,
             auto_create=True,
@@ -333,6 +379,7 @@ class Orchestrator:
             plan_path=self.plan_path,
             state_path=self.state_path,
             project_root=self.project_root,
+            change_detector=self.change_detector,
         )
         self.task_planner = task_planner or TaskPlannerAgent(
             output_path=self.tasks_path,
@@ -357,7 +404,30 @@ class Orchestrator:
             project_root=self.project_root,
             auto_init=True,
         )
-        self.impact_analyzer = impact_analyzer
+        self.impact_analyzer = impact_analyzer or ImpactAnalyzer(
+            project_root=self.project_root,
+            change_detector=self.change_detector,
+        )
+        self.test_selector = test_selector or TestSelector(
+            project_root=self.project_root,
+            impact_analyzer=self.impact_analyzer,
+            change_detector=self.change_detector,
+        )
+        self.doc_incremental_builder = doc_incremental_builder or DocIncrementalBuilder()
+        self.reasoning_engine = reasoning_engine or ReasoningEngine(
+            project_root=self.project_root, cache_manager=self.cache_manager
+        )
+        self.planning_revision_engine = planning_revision_engine or PlanningRevisionEngine()
+        self.strategy_decision_engine = strategy_decision_engine or StrategyDecisionEngine(
+            cache_manager=self.cache_manager, project_root=str(self.project_root)
+        )
+        self.hypothesis_engine = hypothesis_engine or HypothesisEngine(
+            project_root=self.project_root, cache_manager=self.cache_manager
+        )
+        self.knowledge_reasoner = knowledge_reasoner or KnowledgeReasoner(
+            project_root=self.project_root, cache_manager=self.cache_manager
+        )
+        self.explainability_engine = explainability_engine or ExplainabilityEngine()
         self.refactoring_planner = refactoring_planner
         self.repository_analyzer = repository_analyzer
         self.change_planner = change_planner
@@ -447,6 +517,113 @@ class Orchestrator:
 
         # AutoDev v3.6 Autonomous AI Research Lab & Scientific Discovery Framework
         self._research_lab = research_lab
+        self.multi_agent_runtime = multi_agent_runtime
+        self.agent_metrics_tracker = agent_metrics_tracker
+        self.multi_agent_collaboration = collaboration_engine
+        if self.coordination_mode.lower().replace("-", "_") in {"multi_agent", "collaborative"}:
+            self.agent_metrics_tracker = self.agent_metrics_tracker or AgentMetricsTracker(
+                self.project_root / "memory" / "agent_metrics"
+            )
+            if self.multi_agent_runtime is None:
+                self.multi_agent_runtime = MultiAgentRuntime(
+                    metrics_tracker=self.agent_metrics_tracker
+                )
+                self._register_default_runtime_agents()
+        if self.multi_agent_runtime is not None:
+            self.agent_metrics_tracker = (
+                self.agent_metrics_tracker or self.multi_agent_runtime.metrics_tracker
+            )
+            if self.multi_agent_collaboration is None:
+                self.multi_agent_collaboration = V38CollaborationEngine(
+                    runtime=self.multi_agent_runtime,
+                )
+
+    def _register_default_runtime_agents(self) -> None:
+        """Registers non-executing role descriptors; legacy pipeline still executes tasks."""
+        if self.multi_agent_runtime is None:
+            return
+        defaults = (
+            ("autodev_backend", "Backend", AgentRole.BACKEND_ENGINEER, ["implementation", "python"]),
+            ("autodev_testing", "Testing", AgentRole.QA_ENGINEER, ["testing", "pytest"]),
+            ("autodev_security", "Security", AgentRole.SECURITY_ENGINEER, ["security", "review"]),
+            ("autodev_documentation", "Documentation", AgentRole.DOCUMENTATION_ENGINEER, ["documentation", "docs"]),
+        )
+        for agent_id, name, role, capabilities in defaults:
+            if self.multi_agent_runtime.registry.get_agent(agent_id) is None:
+                self.multi_agent_runtime.register_agent(
+                    AgentDescriptor(
+                        agent_id=agent_id,
+                        name=name,
+                        role=role,
+                        capabilities=capabilities,
+                        max_workload=1,
+                    )
+                )
+
+    def _publish_multi_agent_outcome(
+        self,
+        task_id: str,
+        assignment: dict[str, Any],
+        success: bool,
+        execution_time: float,
+        review_score: float,
+        retry_count: int,
+        learning_summary: Optional[dict[str, Any]] = None,
+    ) -> None:
+        if self.multi_agent_runtime is None:
+            return
+        try:
+            agent_id = str(assignment.get("agent_id", ""))
+            self.multi_agent_runtime.bus.publish(
+                "TASK_RESULT",
+                sender="orchestrator",
+                receiver="multi_agent_runtime",
+                payload={
+                    "task_id": task_id,
+                    "status": "completed" if success else "failed",
+                },
+                correlation_id=assignment.get("message_id"),
+            )
+            if agent_id and self.agent_metrics_tracker is not None:
+                self.agent_metrics_tracker.record(
+                    agent_id,
+                    success=success,
+                    execution_time=max(0.0, execution_time),
+                    review_score=review_score,
+                    defects=0 if success else 1,
+                )
+            if self.multi_agent_collaboration is not None:
+                self.multi_agent_collaboration.notify_completion(
+                    task_id,
+                    {"status": "completed" if success else "failed"},
+                    success=success,
+                )
+            if learning_summary is not None:
+                self.knowledge_reasoner.add_source(
+                    {
+                        "source": "multi_agent_learning",
+                        "task_id": task_id,
+                        "success": success,
+                        **learning_summary,
+                    }
+                )
+            self.multi_agent_runtime.broadcast(
+                "orchestrator",
+                {
+                    "event": "LEARNING_EVENT",
+                    "task_id": task_id,
+                    "success": success,
+                    "retry_count": retry_count,
+                    "quality_score": review_score,
+                },
+                message_type="LEARNING_EVENT",
+            )
+        except Exception as err:
+            self.logger.warning(
+                "Could not publish multi-agent outcome for task %s: %s",
+                task_id,
+                err,
+            )
 
     @property
     def project_dir(self) -> Path:
@@ -532,6 +709,88 @@ class Orchestrator:
         except Exception as exc:
             raise RuntimeError(f"Invalid project plan at '{self.plan_path}': {exc}") from exc
 
+    def update_documentation(
+        self,
+        documents: Mapping[str | Path, Mapping[str, str]],
+    ) -> Dict[str, bool]:
+        """Updates managed sections in independent documentation files."""
+        rooted_documents = {
+            (
+                Path(path).resolve()
+                if Path(path).is_absolute()
+                else (self.project_root / Path(path)).resolve()
+            ): sections
+            for path, sections in documents.items()
+        }
+        return self.doc_incremental_builder.update_documents(rooted_documents)
+
+    def _apply_documentation_updates(self, context: Dict[str, Any]) -> None:
+        updates = context.get("documentation_updates")
+        if updates is None:
+            return
+        if not isinstance(updates, Mapping):
+            raise TypeError("context['documentation_updates'] must map paths to section mappings.")
+        documents: Dict[Path, Mapping[str, str]] = {}
+        for path, sections in updates.items():
+            if not isinstance(sections, Mapping):
+                raise TypeError(f"Documentation sections for {path!r} must be a mapping.")
+            if not all(isinstance(name, str) and isinstance(content, str) for name, content in sections.items()):
+                raise TypeError(f"Documentation sections for {path!r} must contain string names and content.")
+            documents[Path(path)] = sections
+        with self.performance_profiler.profile_subsystem("Documentation_Generation"):
+            result = self.update_documentation(documents)
+        context["updated_documentation"] = sorted(
+            path for path, changed in result.items() if changed
+        )
+
+    def _run_tests(self, test_files: Optional[List[str]]) -> TestResult:
+        """Runs selected tests when the injected tester supports the incremental API."""
+        run_tests = self.tester_agent.run_tests
+        if test_files is None:
+            return run_tests(project_root=self.project_root)
+
+        try:
+            parameters = inspect.signature(run_tests).parameters.values()
+        except (TypeError, ValueError):
+            self.logger.warning(
+                "Could not inspect the injected test runner; using its full-suite behavior."
+            )
+            return run_tests(project_root=self.project_root)
+
+        supports_selection = any(
+            parameter.name == "test_files"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+        if not supports_selection:
+            self.logger.info(
+                "Injected test runner does not support selected files; running its full suite."
+            )
+            return run_tests(project_root=self.project_root)
+        return run_tests(
+            project_root=self.project_root,
+            test_files=test_files,
+        )
+
+    def _finalize_incremental_run(self, orchestration_start: float) -> None:
+        """Persists telemetry and repairs invalid cache registrations without blocking a run."""
+        try:
+            self.performance_profiler.record_duration(
+                "Orchestration",
+                max(0.0, time.perf_counter() - orchestration_start),
+            )
+            invalid_caches = [
+                name
+                for name, valid in self.cache_manager.verify().items()
+                if not valid
+            ]
+            if invalid_caches:
+                self.logger.warning("Repairing invalid caches: %s", ", ".join(invalid_caches))
+                self.cache_manager.repair()
+            self.performance_profiler.save_report()
+        except (OSError, ValueError, TypeError) as err:
+            self.logger.warning("Could not persist incremental cache or benchmark telemetry: %s", err)
+
     # -------------------------------------------------------------------------
     # Main Autonomous Execution Loop
     # -------------------------------------------------------------------------
@@ -544,6 +803,7 @@ class Orchestrator:
             ExecutionSummary containing complete telemetry, metrics, and state snapshots.
         """
         start_time = time.time()
+        orchestration_start = time.perf_counter()
         self.logger.info("=" * 60)
         self.logger.info("Starting AutoDev Orchestrator (Version 3 - Autonomous Loop)")
         self.logger.info("Target Workspace: %s", self.project_root)
@@ -572,6 +832,20 @@ class Orchestrator:
             plan = self._verify_project_plan()
             total_days = int(plan.get("total_days", len(plan.get("phases", []))))
 
+            # Detect repository changes once and share their hashes with indexing and context.
+            changes = self.change_detector.detect()
+            try:
+                with self.performance_profiler.profile_subsystem("Indexing"):
+                    symbol_graph = self.incremental_indexer.index_project(changes=changes)
+                self.impact_analyzer.graph = symbol_graph
+            except (OSError, ValueError) as err:
+                self.logger.warning(
+                    "Incremental indexing could not load or update its cache; continuing with the available graph: %s",
+                    err,
+                )
+                symbol_graph = self.incremental_indexer.graph
+                self.impact_analyzer.graph = symbol_graph
+
             # Check if project is already complete
             if current_day > total_days:
                 self.logger.info("Project is already completed (Day %d > Total %d).", current_day, total_days)
@@ -579,6 +853,7 @@ class Orchestrator:
                 state.status = "completed"
                 self.state_manager.save_state(state)
 
+                self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
                 return ExecutionSummary(
                     overall_success=True,
@@ -601,7 +876,9 @@ class Orchestrator:
 
             # 3. Build context
             self.logger.info("Building project context with ContextBuilder...")
-            context = self.context_builder.build(project_root=self.project_root)
+            self.context_builder.change_detector = self.change_detector
+            with self.performance_profiler.profile_subsystem("Context_Building"):
+                context = self.context_builder.build(project_root=self.project_root)
 
             # Repository Intelligence Analysis (v1.7)
             if hasattr(self, "repository_analyzer") and self.repository_analyzer:
@@ -609,7 +886,7 @@ class Orchestrator:
                     self.logger.info("Executing Repository Intelligence Analysis...")
                     repo_analysis = self.repository_analyzer.analyze(
                         project_root=self.project_root,
-                        symbol_graph=context.get("symbol_graph"),
+                        symbol_graph=context.get("symbol_graph") or symbol_graph,
                         project_files=context.get("project_files"),
                     )
                     context["repository_analysis"] = repo_analysis
@@ -650,7 +927,67 @@ class Orchestrator:
             # 4. Generate task list
             self.logger.info("Generating today's atomic tasks with TaskPlannerAgent...")
 
-            all_today_tasks = self.task_planner.execute(context)
+            with self.performance_profiler.profile_subsystem("Planning"):
+                all_today_tasks = self.task_planner.execute(context)
+
+            if self.multi_agent_runtime is not None:
+                try:
+                    if self.multi_agent_collaboration is not None:
+                        context["multi_agent_plan"] = self.multi_agent_collaboration.plan(
+                            all_today_tasks
+                        )
+                    context["agent_capabilities"] = {
+                        agent.agent_id: list(agent.capabilities)
+                        for agent in self.multi_agent_runtime.discover(available_only=False)
+                    }
+                except (OSError, TypeError, ValueError) as err:
+                    self.logger.warning("Multi-agent planning could not be prepared: %s", err)
+
+            try:
+                revision = self.planning_revision_engine.optimize(all_today_tasks)
+                all_today_tasks = revision.tasks
+                context["planning_revision"] = revision.to_dict()
+                context["plan_explanation"] = self.explainability_engine.explain_plan(all_today_tasks)
+                current_phase = context.get("current_phase") or {}
+                context["structured_reasoning"] = self.reasoning_engine.reason(
+                    {
+                        "goal": str(current_phase.get("phase_name", "Execute planned work")),
+                        "description": str(current_phase.get("description", "")),
+                    },
+                    {
+                        "files": [
+                            path
+                            for task in all_today_tasks
+                            for path in getattr(task, "estimated_files", [])
+                        ],
+                        "dependencies": [
+                            dependency
+                            for task in all_today_tasks
+                            for dependency in getattr(task, "dependencies", [])
+                        ],
+                    },
+                )
+                context["strategy_options"] = self.strategy_decision_engine.rank_options([
+                    {
+                        "name": "dependency_safe",
+                        "benefit": 0.7,
+                        "maintainability": 0.8,
+                        "evidence": 0.8,
+                        "risk": 0.1,
+                        "complexity": 0.2,
+                    },
+                    {
+                        "name": "minimal_change",
+                        "benefit": 0.6,
+                        "maintainability": 0.7,
+                        "evidence": 0.7,
+                        "cost": 0.2,
+                        "risk": 0.2,
+                        "complexity": 0.1,
+                    },
+                ])
+            except (OSError, TypeError, ValueError) as err:
+                self.logger.warning("Structured planning support unavailable; preserving generated plan: %s", err)
 
             # 5. Filter completed tasks
             self.logger.info("Selecting highest-priority pending task...")
@@ -687,6 +1024,7 @@ class Orchestrator:
                         state.status = "completed"
                         self.state_manager.save_state(state)
 
+                self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
                 return ExecutionSummary(
                     overall_success=True,
@@ -713,8 +1051,71 @@ class Orchestrator:
                 self.logger.info("Executing Task [%s] (Priority %d): %s", task.id, task.priority, task.title)
                 last_executed_task = task
                 task_start = time.time()
+                assignment: Optional[dict[str, Any]] = None
+                retry_res: Any = None
 
                 try:
+                    if self.multi_agent_runtime is not None:
+                        context.pop("agent_assignment", None)
+                    if self.multi_agent_runtime is not None:
+                        title = f"{task.title} {task.description}".lower()
+                        capability = (
+                            "testing" if any(token in title for token in ("test", "validation", "pytest"))
+                            else "security" if "security" in title
+                            else "documentation" if any(token in title for token in ("documentation", "readme", "docs"))
+                            else "implementation"
+                        )
+                        try:
+                            assignment = self.multi_agent_runtime.dispatch(
+                                {
+                                    "id": task.id,
+                                    "title": task.title,
+                                    "description": task.description,
+                                    "estimated_files": list(task.estimated_files),
+                                },
+                                required_capabilities=[capability],
+                                record_metrics=False,
+                                execute_handler=False,
+                            )
+                        except RuntimeError as err:
+                            self.logger.warning(
+                                "No multi-agent assignment for task %s; using the legacy execution path: %s",
+                                task.id,
+                                err,
+                            )
+                        if assignment is not None:
+                            context["agent_assignment"] = assignment
+                    task_context = {
+                        "title": task.title,
+                        "description": task.description,
+                        "estimated_files": list(getattr(task, "estimated_files", [])),
+                        "dependencies": list(getattr(task, "dependencies", [])),
+                    }
+                    context["task_reasoning"] = self.reasoning_engine.reason(
+                        {"title": task.title, "description": task.description},
+                        task_context,
+                    )
+                    context["task_hypotheses"] = [
+                        hypothesis.to_dict()
+                        for hypothesis in self.hypothesis_engine.generate(
+                            task.description,
+                            {"affected_modules": task_context["estimated_files"]},
+                            limit=3,
+                        )
+                    ]
+                    if getattr(self, "evolving_engine", None):
+                        try:
+                            self.knowledge_reasoner.sources = [
+                                event.to_dict()
+                                for event in self.evolving_engine.learning_engine.list_events()
+                            ]
+                        except (AttributeError, TypeError, ValueError) as err:
+                            self.logger.debug("Prior learning history is unavailable: %s", err)
+                    context["relevant_knowledge"] = self.knowledge_reasoner.reason(
+                        task.description
+                    )
+                    context["task_explanation"] = self.explainability_engine.explain_task(task)
+
                     # 1. Impact Analysis
                     impact_report = None
                     if hasattr(self, "impact_analyzer") and self.impact_analyzer:
@@ -795,6 +1196,20 @@ class Orchestrator:
                             auto_save=True,
                         )
                         execution_records.append(record)
+                        if assignment is not None:
+                            self._publish_multi_agent_outcome(
+                                task_id=task.id,
+                                assignment=assignment,
+                                success=False,
+                                execution_time=time.time() - task_start,
+                                review_score=0.0,
+                                retry_count=0,
+                                learning_summary={
+                                    "title": task.title,
+                                    "description": task.description,
+                                    "failure_pattern": "critical_architecture_violation",
+                                },
+                            )
                         continue
 
                     # 3. Code Context Retrieval
@@ -918,10 +1333,39 @@ class Orchestrator:
                     for f in write_result.files_written:
                         generated_files_set.add(f)
 
+                    # Refresh only written source files, then select the tests affected by them.
+                    index_update_ok = True
+                    try:
+                        with self.performance_profiler.profile_subsystem("Indexing"):
+                            symbol_graph = self.incremental_indexer.update_files(
+                                [str(file_path) for file_path in write_result.files_written]
+                            )
+                        self.impact_analyzer.graph = symbol_graph
+                    except (OSError, ValueError) as err:
+                        index_update_ok = False
+                        self.logger.warning(
+                            "Incremental update after file writes failed; falling back to full-suite validation: %s",
+                            err,
+                        )
+
+                    test_files: Optional[List[str]] = None
+                    written_paths = [str(file_path) for file_path in write_result.files_written]
+                    if written_paths and index_update_ok:
+                        with self.performance_profiler.profile_subsystem("Test_Discovery"):
+                            self.test_selector.refresh_tests()
+                            test_files = self.test_selector.select_tests(
+                                changed_files=written_paths,
+                                impact_report=impact_report,
+                            )
+
                     # • TesterAgent.run_tests()
-                    self.logger.info("Executing automated test suite with TesterAgent...")
-                    test_result = self.tester_agent.run_tests(project_root=self.project_root)
+                    self.logger.info(
+                        "Executing %s test validation with TesterAgent...",
+                        "selected" if test_files is not None else "full-suite",
+                    )
+                    test_result = self._run_tests(test_files)
                     last_test_result = test_result
+                    self._apply_documentation_updates(context)
 
                     # • ReviewerAgent.review()
                     self.logger.info("Performing AI code review with ReviewerAgent...")
@@ -1022,7 +1466,7 @@ class Orchestrator:
                                 test_pass_rate=float(test_result.pass_rate) if test_result else 100.0,
                                 files_affected=written_paths,
                                 execution_time=time.time() - task_start,
-                                retry_count=int(getattr(retry_result, "attempts", 0)) if retry_result else 0,
+                                retry_count=int(getattr(retry_res, "attempts", 0)) if retry_res else 0,
                                 review_feedback=getattr(review_result, "feedback", "") if review_result else "",
                                 root_cause=last_error if not task_success else "",
                                 solution="Resolved via coder/retry pipeline" if task_success else "",
@@ -1031,10 +1475,43 @@ class Orchestrator:
                         except Exception as learn_exc:
                             self.logger.debug("Learning engine hook exception: %s", learn_exc)
 
+                    if assignment is not None and self.multi_agent_runtime is not None:
+                        self._publish_multi_agent_outcome(
+                            task_id=task.id,
+                            assignment=assignment,
+                            success=task_success,
+                            execution_time=time.time() - task_start,
+                            review_score=float(review_result.overall_quality_score) if review_result else 0.0,
+                            retry_count=int(getattr(retry_res, "attempts", 0)) if retry_res else 0,
+                            learning_summary={
+                                "title": task.title,
+                                "description": task.description,
+                                "files_affected": [
+                                    str(getattr(file, "path", file))
+                                    for file in getattr(write_result, "files_written", [])
+                                ],
+                                "test_pass_rate": float(test_result.pass_rate) if test_result else 0.0,
+                            },
+                        )
+
                 except Exception as task_exc:
                     self.logger.error("Error executing task [%s]: %s", task.id, task_exc, exc_info=True)
                     tasks_failed.append(task.id)
                     last_error = str(task_exc)
+                    if assignment is not None:
+                        self._publish_multi_agent_outcome(
+                            task_id=task.id,
+                            assignment=assignment,
+                            success=False,
+                            execution_time=time.time() - task_start,
+                            review_score=0.0,
+                            retry_count=int(getattr(retry_res, "attempts", 0)) if retry_res else 0,
+                            learning_summary={
+                                "title": task.title,
+                                "description": task.description,
+                                "failure_pattern": type(task_exc).__name__,
+                            },
+                        )
 
                     try:
                         record = self.state_manager.record_task_execution(
@@ -1110,6 +1587,7 @@ class Orchestrator:
             )
             self.logger.info("=" * 60)
 
+            self._finalize_incremental_run(orchestration_start)
             return ExecutionSummary(
                 overall_success=overall_success,
                 tasks_completed=tasks_completed,
@@ -1136,6 +1614,7 @@ class Orchestrator:
             )
 
         except Exception as exc:
+            self._finalize_incremental_run(orchestration_start)
             duration = round(time.time() - start_time, 3)
             self.logger.error("Orchestrator encountered fatal failure: %s", exc, exc_info=True)
             state_after = self.state_manager.get_state()
@@ -1809,11 +2288,14 @@ class Orchestrator:
         """
         Executes end-to-end autonomous scientific discovery and R&D pipeline (v3.6).
         """
-        return self.research_lab.conduct_research_cycle(
+        result = self.research_lab.conduct_research_cycle(
             module_name=module_name,
             candidate_code=candidate_code,
             baseline_code=baseline_code,
         )
+        if hasattr(result, "to_dict"):
+            return result.to_dict()
+        return result
 
     def query_research_metrics(self) -> Dict[str, Any]:
         """

@@ -25,6 +25,9 @@ class ConsensusStrategy(str, Enum):
     ENGINEERING_MANAGER_OVERRIDE = "engineering_manager_override"
     QUALITY_THRESHOLD = "quality_threshold"
     CONFIDENCE_THRESHOLD = "confidence_threshold"
+    EXPERT = "expert"
+    CONFIDENCE_WEIGHTED = "confidence_weighted"
+    UNANIMOUS = "unanimous"
 
 
 class VoteDecision(str, Enum):
@@ -252,6 +255,47 @@ class ConsensusEngine:
                 reason = (
                     f"Confidence threshold check: avg confidence {avg_confidence:.2f}/{proposal.confidence_threshold:.2f}, "
                     f"approvals {len(approvals)}/{len(active_votes)}."
+                )
+
+            elif proposal.strategy == ConsensusStrategy.EXPERT:
+                expert_vote = max(
+                    active_votes,
+                    key=lambda vote: (
+                        ROLE_SENIORITY_WEIGHTS.get(vote.reviewer_role, 1.0),
+                        vote.confidence_score,
+                        vote.quality_score,
+                        vote.reviewer_id,
+                    ),
+                )
+                approved = expert_vote.decision == VoteDecision.APPROVE
+                reason = (
+                    f"Expert vote selected from {expert_vote.reviewer_id} "
+                    f"({expert_vote.reviewer_role.value}) with confidence "
+                    f"{expert_vote.confidence_score:.2f}: {expert_vote.decision.value}."
+                )
+
+            elif proposal.strategy == ConsensusStrategy.CONFIDENCE_WEIGHTED:
+                approve_weight = sum(
+                    ROLE_SENIORITY_WEIGHTS.get(v.reviewer_role, 1.0) * v.confidence_score
+                    for v in approvals
+                )
+                reject_weight = sum(
+                    ROLE_SENIORITY_WEIGHTS.get(v.reviewer_role, 1.0) * v.confidence_score
+                    for v in rejections
+                )
+                metrics["approve_confidence_weight"] = round(approve_weight, 4)
+                metrics["reject_confidence_weight"] = round(reject_weight, 4)
+                approved = approve_weight > reject_weight
+                reason = (
+                    f"Confidence-weighted vote: {approve_weight:.4f} approve weight "
+                    f"vs {reject_weight:.4f} reject weight."
+                )
+
+            elif proposal.strategy == ConsensusStrategy.UNANIMOUS:
+                approved = bool(active_votes) and len(approvals) == len(active_votes)
+                reason = (
+                    f"Unanimous approval required: {len(approvals)} approvals "
+                    f"from {len(active_votes)} active votes."
                 )
 
             proposal.status = "APPROVED" if approved else "REJECTED"

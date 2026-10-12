@@ -634,11 +634,15 @@ class SymbolGraph:
 
     def import_json(self, filepath_or_json: Union[str, Path]) -> None:
         """Loads and reconstructs SymbolGraph state from JSON string or file."""
-        possible_path = Path(filepath_or_json)
-        if possible_path.exists() and possible_path.is_file():
-            raw_content = possible_path.read_text(encoding="utf-8")
+        raw_value = str(filepath_or_json)
+        if isinstance(filepath_or_json, Path) or not raw_value.lstrip().startswith(("{", "[")):
+            possible_path = Path(filepath_or_json)
+            if possible_path.exists() and possible_path.is_file():
+                raw_content = possible_path.read_text(encoding="utf-8")
+            else:
+                raw_content = raw_value
         else:
-            raw_content = str(filepath_or_json)
+            raw_content = raw_value
 
         data = json.loads(raw_content)
         self.file_hashes = data.get("file_hashes", {})

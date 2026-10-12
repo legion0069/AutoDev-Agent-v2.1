@@ -1,0 +1,52 @@
+[
+  {
+    "measurements": {
+      "decision_cold": {
+        "median_seconds": 0.0012197479991300497,
+        "peak_traced_bytes": 144748
+      },
+      "decision_warm": {
+        "median_seconds": 0.0002431344983051531,
+        "peak_traced_bytes": 135862
+      },
+      "explainability_100_tasks": {
+        "median_seconds": 0.002199373000621563,
+        "peak_traced_bytes": 31507
+      },
+      "hypothesis_cold": {
+        "median_seconds": 0.0014151430004858412,
+        "peak_traced_bytes": 152943
+      },
+      "hypothesis_warm": {
+        "median_seconds": 0.00026483950023248326,
+        "peak_traced_bytes": 143300
+      },
+      "knowledge_cold": {
+        "median_seconds": 0.012789956999768037,
+        "peak_traced_bytes": 201025
+      },
+      "knowledge_warm": {
+        "median_seconds": 0.003280712502601091,
+        "peak_traced_bytes": 171661
+      },
+      "planning_100_tasks": {
+        "median_seconds": 0.07590405600058148,
+        "peak_traced_bytes": 1581182
+      },
+      "reasoning_cold": {
+        "median_seconds": 0.0012599529982253443,
+        "peak_traced_bytes": 145225
+      },
+      "reasoning_warm": {
+        "median_seconds": 0.00020810400019399822,
+        "peak_traced_bytes": 134567
+      }
+    },
+    "summary": {
+      "decision_speedup_percent": 80.07,
+      "reasoning_speedup_percent": 83.48,
+      "warm_cache_hit_ratio": 0.967742
+    },
+    "timestamp": 1791839158.7572942
+  }
+]

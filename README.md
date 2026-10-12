@@ -763,3 +763,254 @@ python -m pytest tests/ -q
 | **End-to-End AI Collaboration Pipeline** | **9 enterprise stages** | **0.261 ms** total | Cross-company autonomous AI pipeline |
 | **Discrete Ecosystem Simulation** | **51,932 msgs/sec** | 1,038 cycles/sec | Multi-company macroeconomic continuous loop |
 
+---
+
+## ⚡ Version 3.6.1 — Incremental Engineering Workflow
+
+Version 3.6.1 adds deterministic repository snapshots and cache-backed incremental
+workflows without changing the existing planner or orchestrator entry points. A cold
+run builds the indexes; later runs use content hashes to update changed source files
+and invalidate removed or renamed files. Missing or invalid caches fall back to a
+full index build.
+
+```mermaid
+flowchart TD
+    Repository[Repository files] --> Detector[RepositoryChangeDetector]
+    Detector --> Snapshot[(memory/cache/repository_changes)]
+    Detector --> Indexer[IncrementalIndexer]
+    Indexer --> Graph[CodeIndexer and SymbolGraph]
+    Graph --> GraphCache[(memory/cache/symbol_graph)]
+    Indexer --> CodeCache[(memory/cache/code_index)]
+    Detector --> Context[ContextBuilder]
+    Context --> ContextCache[(memory/cache/context)]
+    Graph --> Impact[ImpactAnalyzer]
+    Impact --> Selector[TestSelector]
+    Selector --> Tests[Selected tests or full-suite fallback]
+    Updates[Managed documentation sections] --> Docs[DocIncrementalBuilder]
+    Docs --> Scheduler[ExecutionScheduler]
+    Scheduler --> Documentation[README, engineering, architecture, and API docs]
+    CacheManager[CacheManager] --> GraphCache
+    CacheManager --> CodeCache
+    Profiler[PerformanceProfiler] --> Benchmarks[(memory/benchmarks)]
+    Orchestrator[Orchestrator] --> Detector
+    Orchestrator --> Indexer
+    Orchestrator --> Context
+    Orchestrator --> Impact
+    Orchestrator --> Selector
+    Orchestrator --> Profiler
+```
+
+### Incremental public APIs
+
+| API | Purpose |
+| :--- | :--- |
+| `RepositoryChangeDetector.snapshot()`, `.detect()`, `.save()` | Hash repository files and classify new, modified, deleted, renamed, test, and documentation paths. |
+| `IncrementalIndexer.index_project()` | Build a cold index or incrementally update a warm index; `.update_files()` updates explicit paths without a repository walk. |
+| `IncrementalSymbolCache.load()`, `.save()`, `.has_changed()`, `.update()`, `.invalidate()`, `.statistics()` | Persist and update a per-file symbol graph at `memory/cache/symbol_graph/`. |
+| `ContextBuilder.scan_project_workspace()` | Reuse hash-validated cached file content at `memory/cache/context/`; the existing `.build()` and `.build_context()` APIs remain supported. |
+| `DocIncrementalBuilder.update_document()` | Update named managed sections while preserving all text outside those sections. |
+| `TestSelector.select_tests()` / `.select()` | Select tests by changed files, impact results, imports, and symbol references; low-confidence mapping selects the full suite. |
+| `ExecutionScheduler.add_task()` / `.execute()` | Run independent tasks concurrently while honoring dependency edges; failures propagate to the caller. |
+| `CacheManager.clear()`, `.repair()`, `.verify()`, `.stats()` | Clear, repair, validate, and report registered cache directories. |
+| `PerformanceProfiler.profile_subsystem()`, `.record_duration()`, `.save_report()` | Measure duration and peak traced memory and persist benchmark history and JSON reports. |
+
+Cache data is disposable: cache-read or cache-validation failures are logged and the
+indexer rebuilds from source. Source indexing remains limited to the same supported
+extensions and ignored directories as `CodeIndexer`; cache files and generated JSON
+state below `memory/` are excluded from repository change snapshots.
+
+### Developer CLI
+
+The original interactive planner and its `--name`, `--desc`, `--stack`, `--days`,
+and `--output` options remain available. The planner is still the default when no
+subcommand is supplied. Additional commands are:
+
+```console
+python main.py benchmark
+python main.py profile
+python main.py cache stats
+python main.py cache clean
+python main.py test incremental
+python main.py watch --interval 1.0
+```
+
+Incremental testing is deliberately conservative: if impact cannot be mapped with
+sufficient confidence, the selector requests the complete test suite. Injected
+legacy test runners that do not accept a `test_files` argument also retain their
+original full-suite call behavior.
+
+### Version 3.6.1 measurements
+
+The reproducible benchmark runner is `python benchmark_v36_1.py`. Its synthetic
+workload contains 1,000 source files (five symbols per file), 500 test files, and
+a 100-section, 69 KB managed document; each source includes a 4 KB metadata
+literal. On Python 3.14.2/Linux, measured medians showed 93.26% faster warm incremental
+indexing, 99.79% faster isolated single-file symbol graph rebuilding, 71.10% faster
+warm context building, and 87.77% faster unchanged documentation
+updates. A no-op `Orchestrator.run()` with an injected empty task planner
+measured 81.53% faster warm execution than its cold run. Ten warm indexing
+iterations had a 100% cache hit ratio; test selection reduced 500 available
+test files to one. Estimated retained cache bookkeeping was 4.71% of the
+measured SymbolGraph object model. That estimate excludes interpreter allocator
+overhead; peak `tracemalloc` values are reported
+separately and are not process RSS.
+
+The results are workload- and environment-specific, and the no-op orchestration
+benchmark does not include task execution. See
+[`v36_1_engineering_report.md`](./v36_1_engineering_report.md),
+[`memory/benchmarks/v36_1_benchmark_results.json`](./memory/benchmarks/v36_1_benchmark_results.json),
+[`memory/benchmarks/benchmark_history.json`](./memory/benchmarks/benchmark_history.json),
+and [`memory/benchmarks/performance_report.json`](./memory/benchmarks/performance_report.json)
+for methodology, raw samples, cache counts, memory estimates, and limitations.
+
+## 🧠 Version 3.7 — Deterministic Reasoning and Explainable Planning
+
+Version 3.7 adds structured engineering summaries, weighted strategy scoring,
+issue hypotheses, plan validation and repair, relevant-knowledge retrieval, and
+public evidence summaries. These APIs use the Python standard library and
+content-addressed JSON caches under `memory/cache/reasoning/`. They emit concise
+decision-support fields only; private reasoning traces are neither requested nor
+serialized.
+
+```mermaid
+flowchart TD
+    Task[Task and project context] --> Reason[ReasoningEngine]
+    Reason --> Summary[Structured summary, cost, risk, confidence]
+    Task --> Revision[PlanningRevisionEngine]
+    Revision --> Review[Plan review and dependency-safe groups]
+    Task --> Hypothesis[HypothesisEngine]
+    Memory[(Learning history)] --> Knowledge[KnowledgeReasoner]
+    Task --> Knowledge
+    Summary --> Decision[DecisionEngine strategy scoring]
+    Review --> Explain[ExplainabilityEngine]
+    Decision --> Explain
+    Knowledge --> Explain
+    Cache[ReasoningCache] --- Reason
+    Cache --- Decision
+    Cache --- Hypothesis
+    Cache --- Knowledge
+    Explain --> Orchestrator[Orchestrator task context]
+    Orchestrator --> Reflection[Structured task reflection]
+    Reflection --> Memory
+```
+
+### Version 3.7 public APIs
+
+| API | Purpose |
+| :--- | :--- |
+| `ReasoningEngine.reason()`, `.summarize()`, `.estimate_cost()`, `.assess_risk()`, `.confidence()`, `.expected_benefit()`, `.feasibility()` | Produce repeatable structured summaries and bounded estimates from a goal and explicit context. |
+| `DecisionEngine.rank_options()`, `.score_options()`, `.choose_best()`, `.statistics()` | Rank engineering options by stable weighted benefit, evidence, maintainability, cost, risk, and complexity scores. The existing proposal/voting API is unchanged. |
+| `HypothesisEngine.generate()`, `.rank()`, `.validate()`, `.learn()` | Generate stable issue hypotheses and record explicit evidence while retaining the legacy scientific hypothesis APIs. |
+| `PlanningRevisionEngine.review()`, `.repair()`, `.optimize()` | Detect plan/dependency defects, repair missing/self/cyclic edges deterministically, and expose conflict-safe parallel groups without reordering tasks. |
+| `KnowledgeReasoner.reason()`, `.recall()`, `.similar_issues()`, `.add_source()` | Find and rank relevant learning records by explainable token overlap. |
+| `ExplainabilityEngine.explain_decision()`, `.explain_plan()`, `.explain_task()`, `.format_report()` | Return sanitized, structured public explanations with evidence and outcomes. |
+| `ReasoningCache.get()`, `.set()`, `.clear()`, `.statistics()` | Manage versioned, atomically written content-addressed JSON entries; malformed entries are discarded and recomputed. |
+
+The orchestrator attaches plan review, structured task reasoning, ranked
+strategies, relevant learning, issue hypotheses, and safe explanations to task
+context before execution. The existing sequential task executor remains
+sequential; dependency-safe groups are planning information, not permission to
+parallelize task execution. After task completion, structured reflection
+dimensions and improvement priorities are added to learning knowledge while
+legacy reflection and event outputs remain available.
+
+Run the reasoning/decision microbenchmarks with:
+
+```console
+python benchmark_v37_reasoning.py
+```
+
+The runner writes `v37_reasoning_benchmark_results.json` and
+`v37_benchmark_history.json` in `memory/benchmarks/`, appends named v3.7 samples
+to `benchmark_history.json`, and adds a `v37_reasoning_benchmarks` section to
+`performance_report.json` without replacing existing performance data. The
+measurement report includes cold/warm cache timing, cache hit ratio, and
+`tracemalloc` peak allocations. These microbenchmarks do not measure end-to-end
+orchestration performance and should not be interpreted as repository-wide
+speedup claims.
+
+See [`v37_engineering_report.md`](./v37_engineering_report.md) for the measured
+workload, limitations, verification status, and module-level design summary.
+The raw result is in
+[`memory/benchmarks/v37_reasoning_benchmark_results.json`](./memory/benchmarks/v37_reasoning_benchmark_results.json).
+
+## 🤝 Version 3.8 — Opt-in Multi-Agent Collaboration
+
+Version 3.8 adds a deterministic collaboration layer around the existing agent
+registry, planning, and dependency-aware execution scheduler. The default
+orchestrator remains in `coordination_mode="single"`; the v3.8 runtime is
+activated explicitly with `coordination_mode="multi_agent"` (or by injecting a
+`MultiAgentRuntime`). No legacy task-execution path is replaced.
+
+```mermaid
+flowchart TD
+    Orchestrator[Orchestrator] --> Change[Capability discovery]
+    Change --> Negotiate[Deterministic task negotiation]
+    Negotiate --> Runtime[MultiAgentRuntime]
+    Runtime --> Bus[Priority AgentBus]
+    Runtime --> Blackboard[Versioned Blackboard]
+    Orchestrator --> Collaborate[CollaborationEngine]
+    Collaborate --> Plan[Dependency and resource plan]
+    Plan --> Scheduler[ParallelTaskScheduler]
+    Scheduler --> Legacy[Existing coder / tester / reviewer / Git workflow]
+    Legacy --> Metrics[AgentMetricsTracker]
+    Legacy --> Learning[Structured learning event]
+    Learning --> Bus
+```
+
+The message bus supports task requests/results, questions/answers, errors,
+status, learning events, and system events. Inbox ordering is priority-first and
+FIFO for ties; broadcasts and response correlation are available through the
+typed message API. The blackboard provides copy-isolated reads and writes,
+per-key owner locks, optimistic version checks, snapshots, and rollback.
+Negotiation uses fixed weights and agent-ID tie breaks. Consensus and conflict
+results include stable structured evidence.
+
+The scheduler validates dependency DAGs before execution, respects declared
+resources and their capacity limits, and returns results in task-ID order.
+Parallel groups are only created for ready, dependency-independent tasks.
+Orchestrator coordination remains sequential by default and continues to use
+the established coder, tester, reviewer, and Git workflow; in v3.8 mode it
+adds capability assignment metadata, completion events, and agent metrics.
+Default orchestrator descriptors are assignment targets and do not introduce
+new autonomous code execution handlers. Structured task outcomes and failure
+categories are added to the existing `KnowledgeReasoner` source collection and
+published as learning events; existing v3.7 learning hooks continue to record
+the richer task reflection and implementation outcomes.
+
+### Version 3.8 public APIs
+
+| API | Purpose |
+| :--- | :--- |
+| `MultiAgentRuntime.register_agent()`, `.remove_agent()`, `.discover()`, `.dispatch()`, `.broadcast()`, `.get_status()` | Register and discover agents, negotiate tasks, route requests/events, and inspect status. `.dispatch(execute_handler=False)` assigns and queues work without invoking a handler. |
+| `AgentBus.publish()`, `.broadcast()`, `.send_request()`, `.receive()`, `.acknowledge()`, `.subscribe()` | Route typed messages with priority ordering, acknowledgements, and correlation. |
+| `Blackboard.read()`, `.write()`, `.lock()`, `.unlock()`, `.history()`, `.snapshot()`, `.rollback()` | Share versioned state with conflict detection and rollback. |
+| `TaskNegotiationEngine.negotiate()` and `AgentCapabilityManager.discover()` / `.recommend()` | Score eligible agents using fixed weights, availability, history, and stable ties. |
+| `MultiAgentCollaborationEngine.plan()`, `.execute()`, `.progress()`, `.notify_completion()` | Inspect dependencies, schedule tasks through the safe scheduler, and publish progress. |
+| `ConflictResolutionEngine.detect_conflicts()` / `.resolve()` and `MultiAgentConsensusEngine.decide()` | Produce deterministic conflict outcomes and explainable approval decisions. |
+| `ParallelTaskScheduler.schedule()` / `.safe_parallel_groups()` | Validate and execute dependency-safe task batches with resource limits. |
+| `AgentMetricsTracker.record()`, `.get_metrics()`, `.all_metrics()` | Persist success, latency, review, defect, collaboration, and resource metrics under `memory/agent_metrics/`. |
+
+Module-specific names are also available directly from their `core.*` modules.
+The package root uses `MultiAgentConsensusEngine` and
+`MultiAgentCollaborationEngine` aliases to avoid changing the existing
+`ConsensusEngine` and `CollaborationEngine` exports.
+
+Run the standard-library benchmark harness with:
+
+```console
+python benchmark_v38.py
+```
+
+It writes
+[`memory/benchmarks/v38_multi_agent_results.json`](./memory/benchmarks/v38_multi_agent_results.json)
+and appends a record to
+[`memory/benchmarks/v38_benchmark_history.json`](./memory/benchmarks/v38_benchmark_history.json).
+The report measures operation latencies, scheduler throughput/efficiency,
+message throughput, a warm symbol-cache hit ratio, and traced peak allocation
+for one local run. These values are descriptive microbenchmarks, not
+repository-wide speedup or latency guarantees.
+
+See [`v38_engineering_report.md`](./v38_engineering_report.md) for the detailed
+message protocol, blackboard, negotiation, consensus, scheduling, integration,
+benchmark methodology, and verified test results.

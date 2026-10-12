@@ -25,6 +25,9 @@ class ScientificEventType(str, enum.Enum):
     PAPER_PUBLISHED = "PAPER_PUBLISHED"
     PATENT_FILED = "PATENT_FILED"
     REPRODUCIBILITY_VERIFIED = "REPRODUCIBILITY_VERIFIED"
+    BENCHMARK_EXECUTED = "BENCHMARK_RECORD"
+    STATISTICAL_TEST_PASSED = "EXPERIMENT_COMPLETE"
+    EXPERIMENT_CONCLUDED = "EXPERIMENT_COMPLETE"
 
 
 @dataclass
@@ -38,6 +41,14 @@ class ScientificLogRecord:
     payload: Dict[str, Any]
     previous_hash: str
     record_hash: str
+
+    @property
+    def data(self) -> Dict[str, Any]:
+        return self.payload
+
+    @data.setter
+    def data(self, value: Dict[str, Any]) -> None:
+        self.payload = value
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -63,6 +74,7 @@ class ScientificLogger:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._chain: List[ScientificLogRecord] = []
+        self._events = self._chain
         self._latest_hash: str = self.GENESIS_HASH
 
     @staticmethod
@@ -82,11 +94,21 @@ class ScientificLogger:
     def log_event(
         self,
         event_type: ScientificEventType,
-        actor: str,
-        entity_id: str,
-        payload: Dict[str, Any],
+        actor: str = "system",
+        entity_id: Any = "",
+        payload: Optional[Dict[str, Any]] = None,
+        *,
+        experiment_id: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
     ) -> ScientificLogRecord:
         """Appends a new scientific event to the chain, linking it to the previous hash."""
+        if payload is None and isinstance(entity_id, dict):
+            payload = entity_id
+            entity_id = actor
+            actor = "system"
+        if experiment_id is not None:
+            entity_id = experiment_id
+        payload = payload if payload is not None else data if data is not None else {}
         with self._lock:
             rec_id = f"SLOG-{uuid.uuid4().hex[:8].upper()}"
             ts = time.time()
@@ -117,7 +139,7 @@ class ScientificLogger:
             self._latest_hash = rec_hash
             return record
 
-    def verify_chain_integrity(self) -> Tuple[bool, Optional[str]]:
+    def verify_chain_integrity(self) -> Tuple[bool, Optional[int]]:
         """
         Validates the entire audit chain from genesis to head.
         Returns (True, None) if completely valid, or (False, reason) if corrupted.
@@ -126,7 +148,7 @@ class ScientificLogger:
             expected_prev = self.GENESIS_HASH
             for idx, rec in enumerate(self._chain):
                 if rec.previous_hash != expected_prev:
-                    return False, f"Broken chain link at index {idx} ({rec.record_id}): expected {expected_prev}, got {rec.previous_hash}"
+                    return False, idx
 
                 recomputed = self._compute_hash(
                     record_id=rec.record_id,
@@ -139,7 +161,7 @@ class ScientificLogger:
                 )
 
                 if recomputed != rec.record_hash:
-                    return False, f"Hash mismatch at index {idx} ({rec.record_id}): computed {recomputed}, recorded {rec.record_hash}"
+                    return False, idx
 
                 expected_prev = rec.record_hash
 
@@ -164,3 +186,7 @@ class ScientificLogger:
     def total_records(self) -> int:
         with self._lock:
             return len(self._chain)
+
+    @property
+    def total_events(self) -> int:
+        return self.total_records

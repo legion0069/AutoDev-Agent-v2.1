@@ -22,6 +22,25 @@ class ScheduledExperimentStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class SchedulePriority(int, enum.Enum):
+    """Legacy priority values accepted by :meth:`ExperimentScheduler.enqueue`."""
+
+    LOW = 1
+    NORMAL = 2
+    HIGH = 3
+    CRITICAL = 4
+
+
+@dataclass
+class QueuedExperiment:
+    """Legacy queue item returned by the priority-scheduler API."""
+
+    experiment_id: str
+    name: str
+    priority: SchedulePriority
+    task_fn: Callable[[], Any]
+
+
 @dataclass
 class ScheduledExperiment:
     """An individual experiment job queued for automated execution."""
@@ -62,6 +81,30 @@ class ExperimentScheduler:
         self.max_concurrent = max_concurrent
         self._jobs: Dict[str, ScheduledExperiment] = {}
         self._completed_jobs: Dict[str, ScheduledExperiment] = {}
+        self._legacy_queue: List[QueuedExperiment] = []
+
+    def enqueue(
+        self,
+        experiment_id: str,
+        name: str,
+        priority: SchedulePriority,
+        task_fn: Callable[[], Any],
+    ) -> QueuedExperiment:
+        item = QueuedExperiment(experiment_id, name, SchedulePriority(priority), task_fn)
+        with self._lock:
+            self._legacy_queue.append(item)
+        return item
+
+    def get_next(self) -> Optional[QueuedExperiment]:
+        """Returns the highest-priority legacy queue item, FIFO for ties."""
+        with self._lock:
+            if not self._legacy_queue:
+                return None
+            selected = max(
+                enumerate(self._legacy_queue),
+                key=lambda pair: (pair[1].priority.value, -pair[0]),
+            )[0]
+            return self._legacy_queue.pop(selected)
 
     def schedule_experiment(
         self,

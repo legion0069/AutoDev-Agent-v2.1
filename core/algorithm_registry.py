@@ -18,6 +18,7 @@ class AlgorithmAdoptionStatus(str, enum.Enum):
     BENCHMARKED = "BENCHMARKED"        # Formally tested against regression baseline
     APPROVED = "APPROVED"              # Ratified by Chief Scientist & CTO
     PRODUCTION = "PRODUCTION"          # Integrated into active production systems
+    PRODUCTION_READY = "PRODUCTION"    # Legacy alias
     DEPRECATED = "DEPRECATED"          # Superseded by superior algorithm
     RETIRED = "RETIRED"                # Preserved for historical archives only
 
@@ -32,6 +33,12 @@ class AlgorithmDomain(str, enum.Enum):
     SECURITY = "SECURITY"
     DATABASE = "DATABASE"
     REASONING = "REASONING"
+    DATA_STRUCTURES = "DATABASE"       # Legacy aliases
+    SEARCH_SORT = "SYSTEMS"
+    GRAPH_ALGORITHMS = "GRAPH"
+    CRYPTOGRAPHY = "SECURITY"
+    NUMERICAL = "OPTIMIZATION"
+    NATURAL_LANGUAGE = "REASONING"
 
 
 @dataclass
@@ -89,6 +96,84 @@ class AlgorithmRegistry:
         self._algorithms: Dict[str, AlgorithmRecord] = {}
         self._name_index: Dict[str, str] = {}  # name.lower() -> algorithm_id
         self._domain_index: Dict[str, Set[str]] = {}
+
+    @property
+    def total_count(self) -> int:
+        return len(self._algorithms)
+
+    def register(
+        self,
+        name: str,
+        domain: AlgorithmDomain,
+        version: str = "1.0.0",
+        description: str = "",
+        code: str = "",
+        time_complexity: str = "O(N)",
+        space_complexity: str = "O(1)",
+        author: str = "ResearchEngineer",
+    ) -> AlgorithmRecord:
+        """Legacy registration API, mapped to the current specification field."""
+        existing = self.get_by_name(name)
+        status = (
+            AlgorithmAdoptionStatus.CANDIDATE
+            if existing is None
+            else existing.adoption_status
+        )
+        return self.register_algorithm(
+            name=name,
+            domain=domain,
+            description=description,
+            specification=code or description or name,
+            time_complexity=time_complexity,
+            space_complexity=space_complexity,
+            author=author,
+            adoption_status=status,
+            version=version,
+        )
+
+    def get(self, algorithm_id: str) -> Optional[AlgorithmRecord]:
+        return self.get_algorithm(algorithm_id)
+
+    def get_versions(self, name: str) -> List[AlgorithmRecord]:
+        return sorted(
+            (record for record in self._algorithms.values() if record.name.lower() == name.lower()),
+            key=lambda record: tuple(
+                int(part) if part.isdigit() else part
+                for part in record.version.split(".")
+            ),
+        )
+
+    def get_latest(self, name: str) -> Optional[AlgorithmRecord]:
+        versions = self.get_versions(name)
+        return versions[-1] if versions else None
+
+    def get_by_domain(self, domain: AlgorithmDomain) -> List[AlgorithmRecord]:
+        return self.list_algorithms(domain=domain)
+
+    def search(self, keyword: str) -> List[AlgorithmRecord]:
+        normalized = keyword.casefold()
+        return [
+            record
+            for record in self._algorithms.values()
+            if normalized in record.name.casefold()
+            or normalized in record.description.casefold()
+            or normalized in record.specification.casefold()
+            or any(normalized in tag.casefold() for tag in record.tags)
+        ]
+
+    def promote_to_production(self, algorithm_id: str) -> bool:
+        return self.update_status(
+            algorithm_id,
+            AlgorithmAdoptionStatus.PRODUCTION,
+            rationale="Promoted through the legacy registry API.",
+        )
+
+    def deprecate(self, algorithm_id: str, reason: str = "") -> bool:
+        return self.update_status(
+            algorithm_id,
+            AlgorithmAdoptionStatus.DEPRECATED,
+            rationale=reason,
+        )
 
     def register_algorithm(
         self,

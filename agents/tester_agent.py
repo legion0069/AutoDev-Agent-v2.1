@@ -171,6 +171,7 @@ class TesterAgent:
         project_root: Union[str, Path],
         command: Optional[List[str]] = None,
         timeout_seconds: Optional[float] = None,
+        test_files: Optional[List[str]] = None,
     ) -> TestResult:
         """
         Executes the test suite in the specified project directory.
@@ -179,6 +180,7 @@ class TesterAgent:
             project_root: Path to the target project workspace.
             command: Optional explicit command list override.
             timeout_seconds: Execution timeout limit.
+            test_files: Optional project-relative test paths; None runs the configured suite.
 
         Returns:
             TestResult object with execution telemetry and test metrics.
@@ -199,6 +201,38 @@ class TesterAgent:
                 f"Project path '{target_path}' is not a directory."
             )
 
+        selected_files: Optional[List[str]] = None
+        if test_files is not None:
+            selected_files = []
+            for test_file in sorted(set(test_files)):
+                candidate = Path(test_file)
+                candidate = (
+                    candidate.resolve()
+                    if candidate.is_absolute()
+                    else (target_path / candidate).resolve()
+                )
+                try:
+                    relative_candidate = candidate.relative_to(target_path)
+                except ValueError as err:
+                    raise ValueError(f"Test path is outside the project root: {test_file}") from err
+                selected_files.append(relative_candidate.as_posix())
+
+            if not selected_files:
+                logger.info("Skipping test run: the incremental selector found no affected tests.")
+                return TestResult(
+                    success=True,
+                    total_tests=0,
+                    passed=0,
+                    failed=0,
+                    skipped=0,
+                    duration=0.0,
+                    stdout="",
+                    stderr="",
+                    exit_code=0,
+                    command="",
+                    message="No affected tests were selected.",
+                )
+
         # Detect test command if not explicitly supplied
         cmd = command or self.detect_test_command(target_path)
 
@@ -217,6 +251,9 @@ class TesterAgent:
                 command="",
                 message="No test suite detected in project workspace.",
             )
+
+        if selected_files is not None:
+            cmd = [*cmd, *selected_files]
 
         cmd_str = " ".join(cmd)
         logger.info("Executing test command in '%s': %s", target_path, cmd_str)

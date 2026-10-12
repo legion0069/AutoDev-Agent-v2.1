@@ -58,6 +58,15 @@ class ABExperiment:
     statistical_results: Dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     concluded_at: Optional[float] = None
+    description: str = ""
+
+    @property
+    def status(self) -> str:
+        return "completed" if self.is_concluded else "active"
+
+    @property
+    def winner(self) -> Optional[str]:
+        return self.winner_arm_id
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -92,33 +101,57 @@ class ABTestingEngine:
     def create_experiment(
         self,
         name: str,
-        metric_name: str,
-        variants: List[Tuple[str, str]],  # [(variant_id, variant_name), ...]
+        metric_name: Optional[str] = None,
+        variants: Optional[List[Tuple[str, str]]] = None,  # [(variant_id, variant_name), ...]
         control_name: str = "Current Production Baseline",
         higher_is_better: bool = False,
         alpha: float = 0.05,
-        min_sample_size: int = 30,
+        min_sample_size: Optional[int] = None,
         traffic_weights: Optional[Dict[str, float]] = None,
+        *,
+        description: str = "",
+        traffic_split: Optional[Dict[str, float]] = None,
+        metric_of_interest: Optional[str] = None,
     ) -> ABExperiment:
         """Initializes a new multi-arm experiment with Control and specified variants."""
         with self._lock:
             exp_id = f"EXP-{uuid.uuid4().hex[:8].upper()}"
+            metric_name = metric_name or metric_of_interest or "metric"
+            legacy_split = traffic_split is not None
+            if legacy_split:
+                split = traffic_split or {}
+                if not split:
+                    raise ValueError("traffic_split must contain at least one arm")
+                arms = {
+                    arm_id: ExperimentArm(
+                        arm_id=arm_id,
+                        name=arm_id,
+                        traffic_weight=float(weight),
+                    )
+                    for arm_id, weight in split.items()
+                }
+                control_id = next(
+                    (arm_id for arm_id in arms if arm_id.casefold() == "control"),
+                    next(iter(arms)),
+                )
+                if min_sample_size is None:
+                    min_sample_size = 1
+            else:
+                arms = {
+                    "CONTROL": ExperimentArm(
+                        arm_id="CONTROL",
+                        name=control_name,
+                        traffic_weight=(traffic_weights or {}).get("CONTROL", 1.0),
+                    )
+                }
+                for vid, vname in variants or []:
+                    arms[vid] = ExperimentArm(
+                        arm_id=vid,
+                        name=vname,
+                        traffic_weight=(traffic_weights or {}).get(vid, 1.0),
+                    )
+                control_id = "CONTROL"
             weights = traffic_weights or {}
-
-            arms: Dict[str, ExperimentArm] = {
-                "CONTROL": ExperimentArm(
-                    arm_id="CONTROL",
-                    name=control_name,
-                    traffic_weight=weights.get("CONTROL", 1.0),
-                )
-            }
-
-            for vid, vname in variants:
-                arms[vid] = ExperimentArm(
-                    arm_id=vid,
-                    name=vname,
-                    traffic_weight=weights.get(vid, 1.0),
-                )
 
             exp = ABExperiment(
                 experiment_id=exp_id,
@@ -126,13 +159,46 @@ class ABTestingEngine:
                 metric_name=metric_name,
                 higher_is_better=higher_is_better,
                 alpha=alpha,
-                min_sample_size=min_sample_size,
-                control_arm_id="CONTROL",
+                min_sample_size=min_sample_size if min_sample_size is not None else 30,
+                control_arm_id=control_id,
                 arms=arms,
+                description=description,
             )
 
             self._experiments[exp_id] = exp
             return exp
+
+    def assign_arm(self, experiment_id: str, entity_id: str) -> str:
+        return self.route_traffic(experiment_id, entity_id)
+
+    def evaluate(self, experiment_id: str) -> Dict[str, Any]:
+        result = self.evaluate_and_determine_winner(experiment_id)
+        experiment = self.get_experiment(experiment_id)
+        if experiment is None:
+            return result
+        evaluations = result.get("evaluations", {})
+        p_values = [
+            item.get("t_test", {}).get("p_value", 1.0)
+            for item in evaluations.values()
+            if isinstance(item, dict) and item.get("t_test")
+        ]
+        return {
+            **result,
+            "is_conclusive": experiment.is_concluded,
+            "winner": experiment.winner_arm_id,
+            "p_value": min(p_values, default=1.0),
+        }
+
+    def conclude(self, experiment_id: str) -> Optional[ABExperiment]:
+        self.evaluate_and_determine_winner(experiment_id)
+        experiment = self.get_experiment(experiment_id)
+        if experiment is not None and not experiment.is_concluded:
+            sampled_arms = [arm for arm in experiment.arms.values() if arm.sample_count]
+            if sampled_arms and all(arm.sample_count >= experiment.min_sample_size for arm in sampled_arms):
+                experiment.is_concluded = True
+                experiment.winner_arm_id = experiment.control_arm_id
+                experiment.concluded_at = time.time()
+        return experiment
 
     def get_experiment(self, experiment_id: str) -> Optional[ABExperiment]:
         with self._lock:

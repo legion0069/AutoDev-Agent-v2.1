@@ -38,6 +38,24 @@ class PaperAuthorAgent:
         if self.bus:
             self.bus.register_entity(self.name)
 
+    @property
+    def role(self) -> str:
+        return "Paper Author"
+
+    def draft_manuscript(self, title: str, abstract: str, keywords: List[str]) -> Dict[str, Any]:
+        paper = self.lab.paper_generator.create_paper(title=title, authors=[self.name])
+        paper.abstract = abstract
+        paper.keywords = list(keywords)
+        record = {
+            "paper_id": paper.paper_id,
+            "title": paper.title,
+            "authors": list(paper.authors),
+            "abstract": paper.abstract,
+            "keywords": list(paper.keywords),
+        }
+        self.lab.research_memory.store_paper(paper.paper_id, record)
+        return record
+
     def write_manuscript(
         self,
         title: str,

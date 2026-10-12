@@ -201,7 +201,8 @@ class MemoryManager:
     """
     Persistent Long-Term Memory Manager for AutoDev.
     Provides fast, deterministic semantic scoring, category filtering,
-    tag indexing, summarization, and atomic file persistence.
+    tag indexing, summarization, and atomic file persistence with
+    lazy loading and dirty-flag optimization.
     """
 
     DEFAULT_MEMORY_PATH = Path("memory/project_memory.json")
@@ -211,6 +212,7 @@ class MemoryManager:
         memory_path: Union[str, Path] = DEFAULT_MEMORY_PATH,
         auto_create: bool = True,
         persistence_path: Optional[Union[str, Path]] = None,
+        lazy_load: bool = True,
     ) -> None:
         """
         Initializes the MemoryManager.
@@ -219,16 +221,36 @@ class MemoryManager:
             memory_path: Path to the JSON persistence file.
             auto_create: Whether to automatically create an empty memory store if missing.
             persistence_path: Alias for memory_path.
+            lazy_load: If True, delays loading until first access.
         """
         target_path = persistence_path or memory_path
         self.memory_path = Path(target_path).resolve()
         self.auto_create = auto_create
         self._entries: Dict[str, MemoryEntry] = {}
+        self._loaded = False
+        self._dirty = False
+        self._last_save_time = 0
+        self._save_interval = 5.0  # Batch persistence every 5 seconds if dirty
 
-        if self.memory_path.exists():
-            self.load_memory()
-        elif self.auto_create:
+        if not lazy_load:
+            self._ensure_loaded()
+        elif not self.memory_path.exists() and self.auto_create:
             self._initialize_empty_store()
+            self._loaded = True
+
+    def _ensure_loaded(self) -> None:
+        """Triggers lazy loading if not already loaded."""
+        if not self._loaded:
+            if self.memory_path.exists():
+                self.load_memory()
+            elif self.auto_create:
+                self._initialize_empty_store()
+            self._loaded = True
+
+    @property
+    def entries(self) -> Dict[str, MemoryEntry]:
+        self._ensure_loaded()
+        return self._entries
 
     @property
     def persistence_path(self) -> Path:
@@ -252,23 +274,9 @@ class MemoryManager:
     ) -> MemoryEntry:
         """
         Creates, validates, and persists a new memory entry.
-
-        Args:
-            title: Short descriptive title.
-            content: Detailed text body of the memory.
-            category: One of the supported MemoryCategory values.
-            tags: Optional list of keyword tags.
-            importance: Relative importance integer (>= 0).
-            related_tasks: Optional list of task identifiers.
-            entry_id: Optional unique identifier. If omitted, generates a unique ID.
-            timestamp: Optional ISO timestamp string. Defaults to current UTC time.
-
-        Returns:
-            The created MemoryEntry instance.
-
-        Raises:
-            MemoryValidationError: If parameters fail validation or entry_id is duplicate.
         """
+        self._ensure_loaded()
+
         # Validate title
         if not title or not isinstance(title, str) or not title.strip():
             raise MemoryValidationError("Memory title cannot be empty.")
@@ -314,12 +322,14 @@ class MemoryManager:
         )
 
         self._entries[entry.id] = entry
-        self.save_memory()
+        self._dirty = True
+        self.save_memory(force=True)
         logger.info(f"Added memory entry '{entry.id}' [{entry.category}]: {entry.title}")
         return entry
 
     def get_memory(self, entry_id: str) -> Optional[MemoryEntry]:
         """Retrieves a memory entry by its unique ID."""
+        self._ensure_loaded()
         return self._entries.get(str(entry_id).strip())
 
     def update(
@@ -334,23 +344,8 @@ class MemoryManager:
     ) -> MemoryEntry:
         """
         Updates fields of an existing memory entry and persists the store.
-
-        Args:
-            entry_id: Target memory identifier.
-            title: Updated title.
-            content: Updated content.
-            category: Updated category.
-            tags: Updated tags list.
-            importance: Updated non-negative importance value.
-            related_tasks: Updated related tasks list.
-
-        Returns:
-            The updated MemoryEntry instance.
-
-        Raises:
-            KeyError: If entry_id is not found.
-            MemoryValidationError: If updated values fail validation.
         """
+        self._ensure_loaded()
         resolved_id = str(entry_id).strip()
         if resolved_id not in self._entries:
             raise KeyError(f"Memory entry '{resolved_id}' not found.")
@@ -387,32 +382,31 @@ class MemoryManager:
         if related_tasks is not None:
             entry.related_tasks = [str(t).strip() for t in related_tasks if str(t).strip()]
 
-        self.save_memory()
+        self._dirty = True
+        self.save_memory(force=False)
         logger.info(f"Updated memory entry '{resolved_id}'.")
         return entry
 
     def delete(self, entry_id: str) -> bool:
         """
         Deletes a memory entry by ID.
-
-        Args:
-            entry_id: Unique memory identifier.
-
-        Returns:
-            True if deleted, False if entry_id did not exist.
         """
+        self._ensure_loaded()
         resolved_id = str(entry_id).strip()
         if resolved_id in self._entries:
             del self._entries[resolved_id]
-            self.save_memory()
+            self._dirty = True
+            self.save_memory(force=False)
             logger.info(f"Deleted memory entry '{resolved_id}'.")
             return True
         return False
 
     def clear(self) -> None:
         """Clears all stored memories and writes empty state to disk."""
+        self._ensure_loaded()
         self._entries.clear()
-        self.save_memory()
+        self._dirty = True
+        self.save_memory(force=True)
         logger.info("Cleared all memory entries.")
 
     # -------------------------------------------------------------------------
@@ -428,19 +422,9 @@ class MemoryManager:
         min_score: float = 0.0,
     ) -> List[MemorySearchResult]:
         """
-        Searches memories using deterministic keyword scoring, title similarity,
-        tag overlap, recency boost, and importance weighting.
-
-        Args:
-            query: Free-text search prompt or keywords.
-            category: Optional category filter.
-            tag: Optional tag filter.
-            limit: Maximum number of results to return.
-            min_score: Minimum relevance threshold (default: 0.0).
-
-        Returns:
-            Sorted list of MemorySearchResult descending by score.
+        Searches memories using deterministic keyword scoring.
         """
+        self._ensure_loaded()
         if not self._entries:
             return []
 
@@ -487,14 +471,8 @@ class MemoryManager:
     def search_by_tag(self, tag: str, limit: Optional[int] = None) -> List[MemoryEntry]:
         """
         Retrieves all memories containing the specified tag.
-
-        Args:
-            tag: Target tag string.
-            limit: Optional limit.
-
-        Returns:
-            List of matching MemoryEntry objects sorted by newest first.
         """
+        self._ensure_loaded()
         norm_tag = str(tag).strip().lower()
         matches = [
             e for e in self._entries.values()
@@ -506,14 +484,8 @@ class MemoryManager:
     def search_by_category(self, category: str, limit: Optional[int] = None) -> List[MemoryEntry]:
         """
         Retrieves all memories belonging to the specified category.
-
-        Args:
-            category: Target category.
-            limit: Optional limit.
-
-        Returns:
-            List of matching MemoryEntry objects sorted by newest first.
         """
+        self._ensure_loaded()
         norm_cat = MemoryCategory.validate(category)
         matches = [
             e for e in self._entries.values()
@@ -534,6 +506,7 @@ class MemoryManager:
         """
         Returns the N most recent memories ordered by timestamp descending.
         """
+        self._ensure_loaded()
         all_entries = list(self._entries.values())
         all_entries.sort(key=lambda e: e.timestamp, reverse=True)
         return all_entries[:limit]
@@ -555,13 +528,7 @@ class MemoryManager:
         ts_range: float,
     ) -> float:
         """
-        Deterministic scoring function evaluating:
-        - Title exact match and term overlap (Weight: 3.5)
-        - Content keyword overlap and frequency (Weight: 1.5)
-        - Tag overlap (Weight: 2.5)
-        - Related tasks match (Weight: 2.0)
-        - Importance boost (Weight: +0.05 per importance level)
-        - Recency boost (Weight: +0.0 to +0.25 based on timestamp)
+        Deterministic scoring function.
         """
         if not query_text and not query_tokens:
             # Query-less retrieval: score strictly based on importance and recency
@@ -626,16 +593,9 @@ class MemoryManager:
 
     def summarize_project_memory(self) -> Dict[str, List[str]]:
         """
-        Generates a structured knowledge summary grouped by engineering domains:
-        - important_architecture_decisions
-        - common_failures
-        - coding_conventions
-        - unresolved_todos
-        - recurring_review_comments
-
-        Returns:
-            Dictionary with categorized knowledge bullet points.
+        Generates a structured knowledge summary.
         """
+        self._ensure_loaded()
         arch_decisions: List[str] = []
         common_failures: List[str] = []
         conventions: List[str] = []
@@ -673,15 +633,9 @@ class MemoryManager:
 
     def format_summary_for_prompt(self, max_items_per_section: int = 5) -> str:
         """
-        Formats the project memory summary as a clean markdown block
-        ready for injection into PromptBuilder context.
-
-        Args:
-            max_items_per_section: Maximum bullet points per section.
-
-        Returns:
-            Clean markdown text formatted for system / agent prompts.
+        Formats the project memory summary as a clean markdown block.
         """
+        self._ensure_loaded()
         summary = self.summarize_project_memory()
         sections = []
 
@@ -718,6 +672,7 @@ class MemoryManager:
         """
         Computes aggregate statistics across all recorded memories.
         """
+        self._ensure_loaded()
         total = len(self._entries)
         if total == 0:
             return MemoryStatistics(
@@ -756,14 +711,9 @@ class MemoryManager:
 
     def export_json(self, filepath: Optional[Union[str, Path]] = None) -> str:
         """
-        Exports the entire memory database as a JSON string and optionally writes to a file.
-
-        Args:
-            filepath: Optional destination path.
-
-        Returns:
-            JSON string of the exported memories.
+        Exports the entire memory database as a JSON string.
         """
+        self._ensure_loaded()
         payload = {
             "version": "1.2",
             "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -788,15 +738,8 @@ class MemoryManager:
     ) -> int:
         """
         Imports memory entries from a JSON string or file path.
-
-        Args:
-            filepath_or_json: File path or raw JSON payload string.
-            overwrite: If True, replaces all current memories with imported ones.
-            merge: If True, combines imported memories with existing ones.
-
-        Returns:
-            Count of successfully imported entries.
         """
+        self._ensure_loaded()
         raw_content = ""
         # Check if argument is an existing file
         possible_path = Path(filepath_or_json)
@@ -836,7 +779,8 @@ class MemoryManager:
             except MemoryValidationError as err:
                 logger.warning(f"Skipping invalid memory during import: {err}")
 
-        self.save_memory()
+        self._dirty = True
+        self.save_memory(force=True)
         logger.info(f"Imported {imported_count} memory entries.")
         return imported_count
 
@@ -846,11 +790,11 @@ class MemoryManager:
 
     def load_memory(self) -> Dict[str, MemoryEntry]:
         """
-        Loads and parses the memory store from disk with automatic corrupted recovery.
-
-        Returns:
-            Dictionary mapping entry IDs to MemoryEntry objects.
+        Loads and parses the memory store from disk.
         """
+        if self._loaded and self._dirty:
+            return self._entries
+
         if not self.memory_path.exists():
             if self.auto_create:
                 self._initialize_empty_store()
@@ -860,6 +804,7 @@ class MemoryManager:
             content = self.memory_path.read_text(encoding="utf-8")
             if not content.strip():
                 self._entries = {}
+                self._loaded = True
                 return self._entries
 
             raw_data = json.loads(content)
@@ -875,6 +820,8 @@ class MemoryManager:
                         logger.warning(f"Skipping malformed entry in {self.memory_path}: {val_err}")
 
             self._entries = parsed_entries
+            self._loaded = True
+            self._dirty = False
             logger.info(f"Loaded {len(self._entries)} memories from {self.memory_path}")
             return self._entries
 
@@ -883,15 +830,22 @@ class MemoryManager:
             self._recover_corrupted_store()
             return self._entries
 
-    def save_memory(self) -> None:
+    def save_memory(self, force: bool = True) -> None:
         """
-        Atomically writes the memory store to disk using a temporary file and rename.
-        Includes retry logic for Windows file locking resilience.
+        Atomically writes the memory store to disk.
+        Supports delayed batching.
         """
+        if not self._dirty and not force:
+            return
+
+        now = time.time()
+        if not force and (now - self._last_save_time < self._save_interval):
+            return
+
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
 
         payload = {
-            "version": "1.2",
+            "version": "3.6.1",
             "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "total_entries": len(self._entries),
             "entries": [e.to_dict() for e in self._entries.values()],
@@ -923,6 +877,9 @@ class MemoryManager:
                             pass
                     else:
                         time.sleep(0.02 * (attempt + 1))
+
+            self._dirty = False
+            self._last_save_time = now
         except Exception as exc:
             if temp_file.exists():
                 try:
@@ -934,7 +891,9 @@ class MemoryManager:
     def _initialize_empty_store(self) -> None:
         """Initializes a new empty memory file."""
         self._entries = {}
-        self.save_memory()
+        self._dirty = False
+        self._loaded = True
+        self.save_memory(force=True)
 
     def _recover_corrupted_store(self) -> None:
         """
