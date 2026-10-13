@@ -1,7 +1,7 @@
 {
-  "project_name": "autodev_repo_test_27yxcvjg",
-  "project_root": "/tmp/autodev_repo_test_27yxcvjg",
-  "timestamp": "2026-10-12T21:57:32.550897+00:00",
+  "project_name": "autodev_repo_test_idbkshlj",
+  "project_root": "/tmp/autodev_repo_test_idbkshlj",
+  "timestamp": "2026-10-13T09:22:46.805144+00:00",
   "total_modules": 11,
   "total_classes": 0,
   "total_interfaces": 0,
@@ -314,5 +314,5 @@
   },
   "hotspots": [],
   "circular_dependencies": [],
-  "summary": "Repository 'autodev_repo_test_27yxcvjg' consists of 11 modules, 0 classes, and 0 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 0 potential architectural hotspots."
+  "summary": "Repository 'autodev_repo_test_idbkshlj' consists of 11 modules, 0 classes, and 0 functions. Primary architecture detected: Modular Monolith. Static topology reveals no circular dependencies and 0 potential architectural hotspots."
 }

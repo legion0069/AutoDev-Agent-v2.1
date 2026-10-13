@@ -1,6 +1,6 @@
-# AutoDev — Autonomous Software Engineering Organization (Version 3.9)
+# AutoDev — Autonomous Software Engineering Intelligence (Version 4.0)
 
-> Current release: **Version 3.9**. The Version 3.5 federation material below is retained as historical architecture documentation.
+> Current release: **Version 4.0**. The Version 3.5 federation material below is retained as historical architecture documentation.
 
 AutoDev is an enterprise-grade autonomous software company platform implemented natively using **100% Python Standard Library** (zero external orchestration frameworks, zero LangGraph, zero CrewAI, zero AutoGen, zero Haystack, zero external databases, zero external message brokers). 
 
@@ -1177,3 +1177,124 @@ not claim release-to-release performance gains.
 See [`v40_engineering_report.md`](./v40_engineering_report.md) for the full
 architecture, workflow, public API, benchmark measurements, compatibility, and
 validation details.
+
+## Engineering Memory Intelligence (V3.10)
+
+The additive memory-intelligence layer supplies structured, persistent task
+outcomes, searchable engineering experience, deterministic knowledge-graph
+queries, ranked context, and evidence-backed recommendations. Enable it
+explicitly with `Orchestrator(memory_mode=True)`; the default execution path and
+existing constructor calls remain unchanged. Sensitive reasoning traces are
+excluded from persisted records.
+
+```mermaid
+flowchart LR
+    Outcomes[Task, review, test, benchmark outcomes] --> Memory[EngineeringMemory]
+    Memory --> Search[EngineeringSearchEngine]
+    Memory --> Experience[ExperienceEngine]
+    Experience --> Ranking[MemoryRankingEngine]
+    Ranking --> Context[ContextIntelligence]
+    Memory --> Consolidation[KnowledgeConsolidationEngine]
+    Search --> Recommendations[RecommendationEngine]
+    Documentation[DocumentationIntelligence] --> Graph[KnowledgeGraph]
+    Memory --> Graph
+    Controller[MemoryController] --> Memory
+    Controller --> Graph
+    Controller --> Context
+```
+
+| Component | Public APIs | Role |
+| :--- | :--- | :--- |
+| `EngineeringMemory` | `store()`, `retrieve()`, `update()`, `search()`, `records()`, `forget()`, `summarize()` | Persistent structured records, backed by the existing `MemoryManager`. |
+| `KnowledgeGraph` | `add_repository()`, `find_paths()`, `related_nodes()`, `dependency_graph()` | Deterministic traversal layered over the V4 `SoftwareKnowledgeGraph`. |
+| `EngineeringSearchEngine` | `search()`, `similar()`, `history()`, `recommend()` | Search memory, graph entities, and dependency neighborhoods. |
+| `ExperienceEngine` | `retrieve()`, `similar_tasks()`, `successful_patterns()`, `failure_lessons()` | Retrieve relevant prior work, including failures when requested. |
+| `KnowledgeConsolidationEngine` | `consolidate()`, `deduplicate()` | Group recurring evidence without deleting source records. |
+| `ContextIntelligence` | `build_context()`, `inject()` | Assemble bounded, ranked historical context for planning. |
+| `MemoryRankingEngine` | `rank()`, `best_memories()` | Rank by recency, importance, similarity, success, confidence, and utility. |
+| `RecommendationEngine` | `recommend()`, `recommend_for_task()` | Produce deduplicated recommendations with source evidence. |
+| `DocumentationIntelligence` | `analyze()`, `search()`, `link_memories()` | Index Markdown sections and associate them with engineering records. |
+| `MemoryController` | `record_task_outcome()`, `retrieve_context()`, `search()`, `status()`, `consolidate()` | Unified facade for orchestration and application clients. |
+
+With memory mode enabled, prior outcomes are inserted into planning context;
+task success/failure, changed files, test and review summaries, metrics,
+recommendations, and architecture decisions are recorded. Learning, reasoning,
+planning revision, collaboration, benchmarks, and the executive dashboard keep
+their existing roles; memory adds a retrieval and persistence layer around
+their structured outputs. Memory does not cause a candidate change to be
+applied automatically.
+
+Run the standard-library microbenchmark harness:
+
+```console
+python tests/benchmark_v310.py
+```
+
+The harness measures persistent storage, search, experience retrieval, context
+assembly, ranking, graph traversal, consolidation, documentation analysis, and
+an end-to-end memory cycle. Results are written to
+[`memory/benchmarks/v310_benchmark_results.json`](./memory/benchmarks/v310_benchmark_results.json),
+[`memory/benchmarks/v310_benchmark_history.json`](./memory/benchmarks/v310_benchmark_history.json),
+and [`memory/benchmarks/v310_performance_report.json`](./memory/benchmarks/v310_performance_report.json).
+These local microbenchmarks are host-dependent and are not performance
+guarantees. See [`v310_engineering_report.md`](./v310_engineering_report.md)
+for subsystem architecture, validation, compatibility, and benchmark details.
+
+## Tool Intelligence and Environment Awareness (V3.11)
+
+V3.11 adds a deterministic, read-only environment intelligence layer for
+repository structure, local Git history, dependencies, APIs, documentation,
+and available developer tools. It does not execute tools or modify the
+repository. Opt in with `Orchestrator(environment_mode=True)`; the default
+orchestration path remains unchanged. Environment findings are available in
+the orchestration context and executive dashboard.
+
+```mermaid
+flowchart LR
+    Environment[EnvironmentAnalyzer] --> Controller[EnvironmentController]
+    Repository[RepositoryIntelligence] --> Controller
+    Dependencies[DependencyIntelligence] --> Controller
+    Git[GitIntelligence] --> Controller
+    Tools[ToolRegistry] --> Selection[ToolSelector]
+    APIs[APIDiscoveryEngine] --> Controller
+    Docs[DocumentationIntelligence V2] --> Controller
+    Selection --> Planner[ToolExecutionPlanner]
+    Planner --> Controller
+    Controller --> Report[Environment awareness report]
+    Controller --> Orchestrator[Optional environment_mode]
+    Orchestrator --> Dashboard[Executive dashboard]
+```
+
+| Component | Public APIs | Role |
+| :--- | :--- | :--- |
+| `ToolRegistry` | `register()`, `discover()`, `get()`, `list_tools()`, `lookup()` | Deterministic registration and local PATH discovery with capability/version metadata. |
+| `ToolSelector` | `select()`, `rank()`, `recommend()` | Ranks available, compatible tools using task fit, platform, language, confidence, and historical outcomes. |
+| `EnvironmentAnalyzer` | `analyze()` | Reports host, Python, tools, build and package managers, CI, Docker/container, workspace layout, and resources. |
+| `RepositoryIntelligence` | `analyze()` | Extends the existing repository analyzer with package ownership, dependency/build graphs, cycles, and health. |
+| `GitIntelligence` | `analyze()` | Reads bounded local commits, branches, recent file changes, failure areas, ownership, and hotspots. |
+| `DependencyIntelligence` | `analyze()` | Uses existing dependency scanners and analyzers to summarize manifests, imports, conflicts, risk, and upgrade opportunities. |
+| `APIDiscoveryEngine` | `discover()`, `search()` | Finds REST/OpenAPI (JSON and YAML), GraphQL, Python, CLI, and configuration interfaces. |
+| `DocumentationIntelligence` | `analyze()`, `analyze_v2()`, `search()`, `link_memories()` | Indexes Markdown sections plus README/changelog/architecture summaries, API metadata, and cross-references. |
+| `ToolExecutionPlanner` | `plan()` | Produces an ordered, deterministic tool plan; it never executes the plan. |
+| `EnvironmentController` | `analyze()`, `status()` | Combines environment, repository, dependency, Git, tool, API, and documentation reports. |
+
+The opt-in orchestration path shares the already incrementally indexed symbol
+graph with environment analysis and supplies the report to task planning. It
+does not change the existing execution, testing, learning, or memory defaults.
+Tool recommendations and execution plans are advisory only; actions that
+execute or modify files remain subject to the existing orchestration flow.
+
+Generate local V3.11 benchmark artifacts with:
+
+```console
+python tests/benchmark_v311.py
+```
+
+The harness records environment scanning, repository analysis, dependency and
+Git analysis, tool selection, API discovery, and end-to-end report generation
+under `memory/benchmarks/v311_benchmark_results.json`,
+`memory/benchmarks/v311_benchmark_history.json`, and
+`memory/benchmarks/v311_performance_report.json`. Measurements are local and
+host-dependent. See [`v311_engineering_report.md`](./v311_engineering_report.md)
+for architecture, workflow, APIs, benchmark values, compatibility, and
+validation results.

@@ -63295,6 +63295,32 @@
         "departments_count": 17,
         "budget_usd": 500000.0
       }
+    },
+    {
+      "event_id": "AUDIT-1791879555127-4868",
+      "actor": "SYSTEM",
+      "action": "INITIALIZE_ORGANIZATION",
+      "timestamp": 1791879555.1270778,
+      "previous_hash": "dd94c2cad5bd0100dfb08c738132ebfc88fbe08539a923ddf754830816b4f005",
+      "hash": "06568af9244645f84a84a47b6729a965accf260918c874f8e24f3fb003514521",
+      "details": {
+        "company_name": "Alias Test",
+        "departments_count": 17,
+        "budget_usd": 500000.0
+      }
+    },
+    {
+      "event_id": "AUDIT-1791883407655-4869",
+      "actor": "SYSTEM",
+      "action": "INITIALIZE_ORGANIZATION",
+      "timestamp": 1791883407.65543,
+      "previous_hash": "06568af9244645f84a84a47b6729a965accf260918c874f8e24f3fb003514521",
+      "hash": "68a4288883238118996e7bda07d998f0dbe5e7b43cd44c110447887e6ae0cd10",
+      "details": {
+        "company_name": "Alias Test",
+        "departments_count": 17,
+        "budget_usd": 500000.0
+      }
     }
   ]
 }

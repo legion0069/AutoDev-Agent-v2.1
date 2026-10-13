@@ -16,6 +16,7 @@ import pytest
 from core.dependency_intelligence import (
     DependencyAnalyzer,
     DependencyGraph,
+    DependencyIntelligence,
     DependencyScanner,
     PackageVersion,
 )
@@ -598,3 +599,14 @@ class TestDependencyAnalyzer:
         assert graph.has_cycle() is False
         assert len(graph.topological_sort()) == n
 
+
+def test_v311_dependency_intelligence_summarizes_manifests_and_imports(tmp_path):
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("import requests\n", encoding="utf-8")
+
+    report = DependencyIntelligence(tmp_path).analyze()
+
+    assert report["manifest_paths"] == ["requirements.txt"]
+    assert any(item["name"] == "requests" for item in report["dependencies"])
+    assert isinstance(report["duplicate_conflicts"], list)
+    assert report["risk"]["score"] >= 0

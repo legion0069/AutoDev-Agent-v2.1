@@ -27,10 +27,11 @@ from __future__ import annotations
 import json
 import inspect
 import logging
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Union
 
@@ -361,6 +362,9 @@ class Orchestrator:
         executive_dashboard: Optional[V39ExecutiveDashboard] = None,
         evolution_mode: bool = False,
         evolution_controller: Optional[EvolutionController] = None,
+        memory_mode: bool = False,
+        environment_mode: bool = False,
+        environment_controller: Optional[Any] = None,
     ) -> None:
         """
         Initializes Orchestrator Version 3 with injectable subsystems (v2.0 - v3.0).
@@ -375,6 +379,19 @@ class Orchestrator:
         self.organization_mode = bool(organization_mode)
         self.evolution_mode = bool(evolution_mode)
         self.evolution_controller = evolution_controller
+        self.memory_mode = bool(memory_mode)
+        self.memory_controller = None
+        if self.memory_mode:
+            from core.memory_controller import MemoryController
+
+            self.memory_controller = MemoryController(self.project_root)
+        self.environment_mode = bool(environment_mode)
+        self.environment_controller = environment_controller
+        if self.environment_mode and self.environment_controller is None:
+            from core.environment_controller import EnvironmentController
+
+            self.environment_controller = EnvironmentController(self.project_root)
+        self.latest_environment_report: Optional[dict[str, Any]] = None
         self.latest_evolution_report: Optional[dict[str, Any]] = None
         self.latest_evolution_dashboard: Optional[dict[str, Any]] = None
         self.latest_organization_dashboard: Optional[dict[str, Any]] = None
@@ -828,9 +845,26 @@ class Orchestrator:
             )
         self._update_organization_dashboard(success, quality_score)
         if not self.evolution_mode:
+            if self.memory_mode or self.environment_mode:
+                if self.latest_organization_dashboard is not None:
+                    if self.memory_mode:
+                        self.latest_organization_dashboard["engineering_memory"] = self.memory_controller.status()
+                    if self.environment_mode:
+                        self.latest_organization_dashboard["environment_intelligence"] = self.latest_environment_report
+                    self.latest_evolution_dashboard = self.latest_organization_dashboard
+                else:
+                    self.latest_evolution_dashboard = {}
+                    if self.memory_mode:
+                        self.latest_evolution_dashboard["engineering_memory"] = self.memory_controller.status()
+                    if self.environment_mode:
+                        self.latest_evolution_dashboard["environment_intelligence"] = self.latest_environment_report
             return
         if self.latest_organization_dashboard is not None:
             self.latest_organization_dashboard["evolution"] = self.latest_evolution_report
+            if self.memory_mode:
+                self.latest_organization_dashboard["engineering_memory"] = self.memory_controller.status()
+            if self.environment_mode:
+                self.latest_organization_dashboard["environment_intelligence"] = self.latest_environment_report
             self.latest_evolution_dashboard = self.latest_organization_dashboard
             return
         learning_events = self.evolving_engine.learning_engine.list_events()
@@ -840,7 +874,128 @@ class Orchestrator:
             benchmarks=benchmarks if isinstance(benchmarks, dict) else {"report": str(benchmarks)},
         )
         dashboard["evolution"] = self.latest_evolution_report
+        if self.memory_mode:
+            dashboard["engineering_memory"] = self.memory_controller.status()
+        if self.environment_mode:
+            dashboard["environment_intelligence"] = self.latest_environment_report
         self.latest_evolution_dashboard = dashboard
+
+    def _record_engineering_memory_outcome(
+        self,
+        *,
+        task: Task,
+        success: bool,
+        task_start: float,
+        write_result: Any,
+        test_result: Any,
+        review_result: Any,
+        error: Optional[str],
+        retry_count: int,
+        reasoning: Any,
+        context: Mapping[str, Any],
+    ) -> None:
+        if not self.memory_mode or self.memory_controller is None:
+            return
+        files = [
+            str(getattr(item, "path", item))
+            for item in getattr(write_result, "files_written", [])
+        ] if write_result is not None else []
+        review_recommendations = list(
+            getattr(review_result, "recommendations", []) or []
+        ) if review_result is not None else []
+        reasoning_summary = None
+        if isinstance(reasoning, dict):
+            for key in ("summary", "conclusion", "answer"):
+                value = reasoning.get(key)
+                if isinstance(value, str) and value.strip():
+                    reasoning_summary = value.strip()
+                    break
+        outcome = {
+            "type": "task",
+            "task_id": str(task.id),
+            "title": str(task.title),
+            "description": str(task.description),
+            "success": bool(success),
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "files_changed": sorted(set(files)),
+            "test_summary": getattr(test_result, "message", None) if test_result else None,
+            "tests_passed": getattr(test_result, "passed", None) if test_result else None,
+            "tests_total": getattr(test_result, "total_tests", None) if test_result else None,
+            "test_pass_rate": getattr(test_result, "pass_rate", None) if test_result else None,
+            "quality_score": getattr(review_result, "overall_quality_score", None) if review_result else None,
+            "review": getattr(review_result, "feedback", None) if review_result else None,
+            "recommendations": review_recommendations,
+            "error": error,
+            "retry_count": retry_count,
+            "execution_seconds": round(max(0.0, time.time() - task_start), 3),
+            "reasoning_summary": reasoning_summary,
+            "architecture_decisions": context.get("architecture_decisions", []),
+            "planning": {
+                "revision": context.get("planning_revision"),
+                "task_priority": getattr(task, "priority", None),
+                "task_dependencies": list(getattr(task, "dependencies", [])),
+            },
+            "learning": self._memory_learning_snapshot(),
+            "reflection": self._memory_reflection_snapshot(),
+            "collaboration": _memory_assignment_summary(context.get("agent_assignment")),
+            "organization": _memory_organization_summary(context.get("organization_context")),
+            "benchmark": self._memory_benchmark_snapshot(),
+            "metrics": {
+                "quality_score": getattr(review_result, "overall_quality_score", None) if review_result else None,
+                "test_pass_rate": getattr(test_result, "pass_rate", None) if test_result else None,
+                "retry_count": retry_count,
+            },
+        }
+        try:
+            self.memory_controller.record_task_outcome(outcome)
+        except (OSError, TypeError, ValueError, KeyError) as err:
+            self.logger.warning("Could not persist engineering memory for task %s: %s", task.id, err)
+
+    def _memory_learning_snapshot(self) -> Optional[dict[str, Any]]:
+        engine = getattr(getattr(self, "evolving_engine", None), "learning_engine", None)
+        if engine is None:
+            return None
+        try:
+            events = engine.list_events()
+        except (AttributeError, OSError, TypeError, ValueError) as err:
+            self.logger.warning("Could not read learning evidence for memory: %s", err)
+            return None
+        if not events:
+            return None
+        event = events[-1]
+        to_dict = getattr(event, "to_dict", None)
+        value = to_dict() if callable(to_dict) else event
+        if not isinstance(value, Mapping):
+            return None
+        return {
+            key: value[key]
+            for key in ("event_id", "category", "summary", "root_cause", "solution", "confidence", "metrics", "timestamp")
+            if key in value
+        }
+
+    def _memory_reflection_snapshot(self) -> Optional[dict[str, Any]]:
+        reflection = getattr(getattr(self, "evolving_engine", None), "reflection_engine", None)
+        to_dict = getattr(reflection, "to_dict", None)
+        if not callable(to_dict):
+            return None
+        try:
+            summary = to_dict()
+        except (OSError, TypeError, ValueError) as err:
+            self.logger.warning("Could not read reflection evidence for memory: %s", err)
+            return None
+        return dict(summary) if isinstance(summary, Mapping) else None
+
+    def _memory_benchmark_snapshot(self) -> dict[str, Any]:
+        try:
+            report = self.performance_profiler.generate_report().to_dict()
+        except (OSError, TypeError, ValueError) as err:
+            self.logger.warning("Could not read benchmark evidence for memory: %s", err)
+            return {"unavailable": str(err)}
+        return {
+            "subsystems": report.get("subsystems", {}),
+            "cache_statistics": report.get("cache_statistics", {}),
+            "memory_usage_bytes": report.get("memory_usage_bytes", {}),
+        }
 
     def _register_default_runtime_agents(self) -> None:
         """Registers non-executing role descriptors; legacy pipeline still executes tasks."""
@@ -1159,7 +1314,7 @@ class Orchestrator:
 
                 self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
-                if self.evolution_mode:
+                if self.evolution_mode or self.memory_mode or self.environment_mode:
                     self._update_v40_dashboard(True, 0.0, duration)
                 return ExecutionSummary(
                     overall_success=True,
@@ -1232,6 +1387,43 @@ class Orchestrator:
 
             # 4. Generate task list
             self.logger.info("Generating today's atomic tasks with TaskPlannerAgent...")
+
+            if self.memory_mode:
+                phase = context.get("current_phase") or {}
+                memory_query = " ".join(
+                    str(value)
+                    for value in (
+                        self.requirement or "",
+                        phase.get("phase_name", ""),
+                        phase.get("description", ""),
+                    )
+                    if value
+                )
+                context["engineering_memory_context"] = self.memory_controller.retrieve_context(
+                    memory_query,
+                    max_items=8,
+                )
+
+            if self.environment_mode:
+                try:
+                    history = []
+                    if self.memory_mode and self.memory_controller is not None:
+                        history = [
+                            {"tool": record["tool"], "success": record["success"]}
+                            for record in self.memory_controller.memory.records()
+                            if "tool" in record and "success" in record
+                        ]
+                    self.latest_environment_report = self.environment_controller.analyze(
+                        symbol_graph=symbol_graph,
+                        task=self.requirement or "Analyze repository and select appropriate development tools",
+                        history=history,
+                    )
+                    context["environment_intelligence"] = self.latest_environment_report
+                except (OSError, subprocess.SubprocessError, TypeError, ValueError) as err:
+                    self.logger.warning(
+                        "Environment intelligence analysis could not be completed: %s",
+                        err,
+                    )
 
             with self.performance_profiler.profile_subsystem("Planning"):
                 all_today_tasks = self.task_planner.execute(context)
@@ -1338,7 +1530,7 @@ class Orchestrator:
 
                 self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
-                if self.evolution_mode:
+                if self.evolution_mode or self.memory_mode or self.environment_mode:
                     self._update_v40_dashboard(True, 0.0, duration)
                 return ExecutionSummary(
                     overall_success=True,
@@ -1808,6 +2000,20 @@ class Orchestrator:
                         except Exception as learn_exc:
                             self.logger.debug("Learning engine hook exception: %s", learn_exc)
 
+                    if self.memory_mode:
+                        self._record_engineering_memory_outcome(
+                            task=task,
+                            success=task_success,
+                            task_start=task_start,
+                            write_result=write_result,
+                            test_result=test_result,
+                            review_result=review_result,
+                            error=None if task_success else last_error,
+                            retry_count=int(getattr(retry_res, "attempts", 0)) if retry_res else 0,
+                            reasoning=context.get("task_reasoning"),
+                            context=context,
+                        )
+
                     if assignment is not None and self.multi_agent_runtime is not None:
                         self._publish_multi_agent_outcome(
                             task_id=task.id,
@@ -1877,6 +2083,20 @@ class Orchestrator:
                             )
                         except Exception:
                             pass
+
+                    if self.memory_mode:
+                        self._record_engineering_memory_outcome(
+                            task=task,
+                            success=False,
+                            task_start=task_start,
+                            write_result=None,
+                            test_result=None,
+                            review_result=None,
+                            error=str(task_exc),
+                            retry_count=int(getattr(retry_res, "attempts", 0)) if retry_res else 0,
+                            reasoning=context.get("task_reasoning"),
+                            context=context,
+                        )
 
                 finally:
                     if self.organization_mode:
@@ -2682,6 +2902,26 @@ class Orchestrator:
 
 # Backwards compatibility alias
 AutoDevOrchestrator = Orchestrator
+
+
+def _memory_assignment_summary(value: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return None
+    return {
+        key: value[key]
+        for key in ("task_id", "agent_id", "agent_name", "role", "capability", "strategy")
+        if key in value
+    }
+
+
+def _memory_organization_summary(value: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return None
+    return {
+        key: value[key]
+        for key in ("project_id", "team_id", "project_name", "status", "priority")
+        if key in value
+    }
 
 
 if __name__ == "__main__":

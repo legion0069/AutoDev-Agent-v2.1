@@ -5,6 +5,7 @@ __init__.py - Dependency Intelligence Package Exports (v3.2)
 from core.dependency_intelligence.dependency_analyzer import DependencyAnalyzer
 from core.dependency_intelligence.dependency_graph import DependencyGraph
 from core.dependency_intelligence.dependency_scanner import DependencyScanner
+from core.dependency_intelligence.engine import DependencyIntelligence
 from core.ecosystem.ecosystem_models import (
     DependencyEcosystem,
     DependencyNode,
@@ -16,6 +17,7 @@ __all__ = [
     "DependencyScanner",
     "DependencyGraph",
     "DependencyAnalyzer",
+    "DependencyIntelligence",
     "PackageVersion",
     "DependencyNode",
     "DependencyRecommendation",

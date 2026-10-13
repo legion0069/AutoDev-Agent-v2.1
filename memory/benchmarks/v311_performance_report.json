@@ -1,0 +1,49 @@
+{
+  "benchmark_count": 7,
+  "metrics": {
+    "api_discovery_latency": {
+      "max_seconds": 4.68869879,
+      "mean_seconds": 4.57375926,
+      "median_seconds": 4.61425931,
+      "min_seconds": 4.41831967
+    },
+    "dependency_analysis_latency": {
+      "max_seconds": 0.3864019,
+      "mean_seconds": 0.23083778,
+      "median_seconds": 0.1632964,
+      "min_seconds": 0.14281504
+    },
+    "environment_report_generation_latency": {
+      "max_seconds": 9.30627486,
+      "mean_seconds": 8.99123651,
+      "median_seconds": 9.03640595,
+      "min_seconds": 8.63102872
+    },
+    "environment_scan_latency": {
+      "max_seconds": 0.03653695,
+      "mean_seconds": 0.0205652,
+      "median_seconds": 0.0165965,
+      "min_seconds": 0.00856215
+    },
+    "git_analysis_latency": {
+      "max_seconds": 0.97225202,
+      "mean_seconds": 0.89882734,
+      "median_seconds": 0.902002,
+      "min_seconds": 0.822228
+    },
+    "repository_scan_latency": {
+      "max_seconds": 3.25909333,
+      "mean_seconds": 2.88598205,
+      "median_seconds": 2.74773132,
+      "min_seconds": 2.6511215
+    },
+    "tool_selection_latency": {
+      "max_seconds": 0.00061588,
+      "mean_seconds": 0.00042743,
+      "median_seconds": 0.00036949,
+      "min_seconds": 0.00029693
+    }
+  },
+  "notes": "Local read-only environment-intelligence benchmarks; timings vary by host and are not release performance claims.",
+  "version": "3.11"
+}

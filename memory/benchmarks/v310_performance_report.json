@@ -1,0 +1,61 @@
+{
+  "benchmark_count": 9,
+  "metrics": {
+    "context_assembly_latency": {
+      "max_seconds": 0.00158577,
+      "mean_seconds": 0.00135789,
+      "median_seconds": 0.00129455,
+      "min_seconds": 0.00126694
+    },
+    "documentation_analysis_latency": {
+      "max_seconds": 0.00066683,
+      "mean_seconds": 0.00029979,
+      "median_seconds": 0.00020455,
+      "min_seconds": 0.00018072
+    },
+    "end_to_end_memory_cycle_latency": {
+      "max_seconds": 0.00257567,
+      "mean_seconds": 0.00189679,
+      "median_seconds": 0.00175794,
+      "min_seconds": 0.00167723
+    },
+    "engineering_search_latency": {
+      "max_seconds": 0.00120785,
+      "mean_seconds": 0.00116492,
+      "median_seconds": 0.00115593,
+      "min_seconds": 0.00112137
+    },
+    "experience_retrieval_latency": {
+      "max_seconds": 0.00167741,
+      "mean_seconds": 0.00165667,
+      "median_seconds": 0.0016544,
+      "min_seconds": 0.00164509
+    },
+    "knowledge_consolidation_latency": {
+      "max_seconds": 0.00026677,
+      "mean_seconds": 0.00023764,
+      "median_seconds": 0.0002335,
+      "min_seconds": 0.00020423
+    },
+    "knowledge_graph_traversal_latency": {
+      "max_seconds": 3.955e-05,
+      "mean_seconds": 2.347e-05,
+      "median_seconds": 1.941e-05,
+      "min_seconds": 1.792e-05
+    },
+    "memory_ranking_latency": {
+      "max_seconds": 0.00036177,
+      "mean_seconds": 0.0003505,
+      "median_seconds": 0.00034905,
+      "min_seconds": 0.00033898
+    },
+    "memory_storage_latency": {
+      "max_seconds": 0.00185733,
+      "mean_seconds": 0.00039922,
+      "median_seconds": 3.409e-05,
+      "min_seconds": 2.275e-05
+    }
+  },
+  "notes": "Local temporary-workspace microbenchmarks; timings vary by host and are not release performance claims.",
+  "version": "3.10"
+}

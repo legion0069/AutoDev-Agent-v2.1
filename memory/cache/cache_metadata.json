@@ -2,13 +2,13 @@
   "code_index": {
     "created_at": 1791829078.102997,
     "entry_count": 2,
-    "hit_count": 71,
-    "hit_ratio": 0.8452380952380952,
-    "last_accessed": 1791842235.2920938,
-    "miss_count": 13,
+    "hit_count": 112,
+    "hit_ratio": 0.8115942028985508,
+    "last_accessed": 1791883348.991582,
+    "miss_count": 26,
     "name": "code_index",
     "path": "/workspaces/AutoDev-Agent/memory/cache/code_index",
-    "size_bytes": 8822781,
+    "size_bytes": 9615352,
     "version": "3.6.1"
   },
   "reasoning/decisions": {
