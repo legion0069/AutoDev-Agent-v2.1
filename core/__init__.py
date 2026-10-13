@@ -1016,6 +1016,22 @@ from core.multi_agent_runtime import MultiAgentRuntime
 from core.parallel_scheduler import ParallelTaskScheduler
 from core.task_negotiation import NegotiationResult, TaskNegotiationEngine
 
+from core.architecture_evolution import ArchitectureEvolutionEngine
+from core.code_quality_engine import CodeQualityEngine
+from core.continuous_improvement import ContinuousImprovementEngine
+from core.design_pattern_engine import DesignPatternEngine
+from core.experiment_engine import (
+    AutonomousExperimentEngine,
+    EvolutionExperimentEngine,
+)
+from core.evolution_controller import EvolutionController
+from core.performance_evolution import (
+    PerformanceEvolutionEngine as V40PerformanceEvolutionEngine,
+)
+from core.research_engine import ResearchEngine
+from core.self_optimizer import SelfOptimizer
+from core.software_knowledge_graph import SoftwareKnowledgeGraph
+
 __all__ = [
     "AgentBus",
     "TypedAgentMessage",
@@ -1748,7 +1764,17 @@ __all__ = [
     "ExperimentOutcome",
     "ResearchLab",
     "ResearchMetrics",
+    "ResearchEngine",
+    "ArchitectureEvolutionEngine",
+    "EvolutionExperimentEngine",
+    "AutonomousExperimentEngine",
+    "SelfOptimizer",
+    "CodeQualityEngine",
+    "DesignPatternEngine",
+    "V40PerformanceEvolutionEngine",
+    "ContinuousImprovementEngine",
+    "SoftwareKnowledgeGraph",
+    "EvolutionController",
 ]
-
 
 

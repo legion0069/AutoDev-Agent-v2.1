@@ -4,18 +4,22 @@ Strictly 100% Python Standard Library. Zero external dependencies.
 """
 
 import enum
+import inspect
+import math
+import tempfile
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from core.ab_testing_engine import ABTestingEngine
 from core.hypothesis_engine import HypothesisEngine, HypothesisStatus, ResearchHypothesis
 from core.reproducibility_manager import ReproducibilityManager
 from core.research_memory import ResearchMemory
 from core.scientific_logger import ScientificEventType, ScientificLogger
-from core.statistical_analyzer import DescriptiveStatistics, HypothesisTestResult, StatisticalAnalyzer
+from core.statistical_analyzer import StatisticalAnalyzer
 
 
 class ExperimentLifecycleStage(str, enum.Enum):
@@ -316,3 +320,185 @@ class ExperimentEngine:
     ) -> Optional[ExperimentRecord | ScientificExperiment]:
         with self._lock:
             return self._legacy_experiments.get(experiment_id) or self._experiments.get(experiment_id)
+
+
+class EvolutionExperimentEngine:
+    """Runs trusted candidate callables in disposable, per-sample workspaces.
+
+    Workspaces isolate candidate-created files but are not an operating-system
+    security boundary. Only trusted evaluator callables should be supplied.
+    """
+
+    def __init__(self, workspace_root: str | Path | None = None) -> None:
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        if self.workspace_root is not None:
+            self.workspace_root.mkdir(parents=True, exist_ok=True)
+        self._experiments: dict[str, dict[str, Any]] = {}
+        self._sequence = 0
+
+    def create_experiment(
+        self,
+        name: str,
+        baseline_runner: Callable[[Path], float] | None = None,
+        candidate_runners: Mapping[str, Callable[[Path], float]] | None = None,
+        *,
+        higher_is_better: bool = False,
+        sample_size: int = 5,
+        alpha: float = 0.05,
+    ) -> dict[str, Any]:
+        if not name.strip():
+            raise ValueError("Experiment name must not be empty.")
+        if sample_size < 2:
+            raise ValueError("sample_size must be at least 2.")
+        if not 0.0 < alpha < 1.0:
+            raise ValueError("alpha must be between 0 and 1.")
+        runners = dict(candidate_runners or {})
+        if any(not key.strip() for key in runners):
+            raise ValueError("Candidate names must not be empty.")
+        if any(not callable(runner) for runner in runners.values()):
+            raise TypeError("Each candidate runner must be callable.")
+        if baseline_runner is not None and not callable(baseline_runner):
+            raise TypeError("baseline_runner must be callable.")
+
+        self._sequence += 1
+        experiment_id = f"V40-EXP-{self._sequence:04d}"
+        record = {
+            "experiment_id": experiment_id,
+            "name": name,
+            "status": "planned",
+            "higher_is_better": higher_is_better,
+            "sample_size": sample_size,
+            "alpha": alpha,
+            "baseline_samples": [],
+            "candidate_samples": {},
+            "candidate_results": {},
+            "winner": None,
+            "rollback_status": "not_required",
+        }
+        self._experiments[experiment_id] = {
+            "record": record,
+            "baseline_runner": baseline_runner,
+            "candidate_runners": dict(sorted(runners.items())),
+        }
+        return self._copy_record(record)
+
+    def run(
+        self,
+        experiment_id: str,
+        *,
+        sample_size: int | None = None,
+    ) -> dict[str, Any]:
+        experiment = self._get_experiment(experiment_id)
+        record = experiment["record"]
+        baseline_runner = experiment["baseline_runner"]
+        candidates = experiment["candidate_runners"]
+        if baseline_runner is None:
+            raise ValueError("A baseline_runner is required to run this experiment.")
+        if not candidates:
+            raise ValueError("At least one candidate runner is required to run this experiment.")
+        count = record["sample_size"] if sample_size is None else sample_size
+        if count < 2:
+            raise ValueError("sample_size must be at least 2.")
+        record["status"] = "running"
+        record["sample_size"] = count
+        try:
+            baseline = self._measure(baseline_runner, experiment_id, "baseline", count)
+            candidate_samples = {
+                name: self._measure(runner, experiment_id, name, count)
+                for name, runner in candidates.items()
+            }
+        except Exception as exc:
+            record["status"] = "failed"
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            record["rollback_status"] = "isolated_workspace_discarded"
+            raise
+        record["baseline_samples"] = baseline
+        record["candidate_samples"] = candidate_samples
+        record["status"] = "completed"
+        return self.compare(experiment_id)
+
+    def compare(self, experiment_id: str) -> dict[str, Any]:
+        record = self._get_experiment(experiment_id)["record"]
+        baseline = record["baseline_samples"]
+        if not baseline:
+            raise ValueError("Experiment has no completed baseline measurements.")
+        higher_is_better = record["higher_is_better"]
+        comparisons: dict[str, Any] = {}
+        winners: list[tuple[float, str]] = []
+        for name, samples in sorted(record["candidate_samples"].items()):
+            test = StatisticalAnalyzer.t_test_two_sample(
+                sample_a=samples,
+                sample_b=baseline,
+                alpha=record["alpha"],
+            )
+            candidate_mean = StatisticalAnalyzer.mean(samples)
+            baseline_mean = StatisticalAnalyzer.mean(baseline)
+            improved = candidate_mean > baseline_mean if higher_is_better else candidate_mean < baseline_mean
+            comparisons[name] = {
+                "candidate_mean": candidate_mean,
+                "baseline_mean": baseline_mean,
+                "statistical_test": test.to_dict(),
+                "is_improvement": improved,
+                "is_significant": test.is_significant,
+            }
+            if test.is_significant and improved:
+                winners.append((-candidate_mean if higher_is_better else candidate_mean, name))
+        record["candidate_results"] = comparisons
+        record["winner"] = min(winners)[1] if winners else None
+        if record["winner"] is None:
+            record["rollback_status"] = "isolated_workspace_discarded"
+        return self._copy_record(record)
+
+    def rollback(self, experiment_id: str) -> dict[str, Any]:
+        """Discards the isolated result and clears any selected candidate."""
+        record = self._get_experiment(experiment_id)["record"]
+        record["winner"] = None
+        record["rollback_status"] = "isolated_workspace_discarded"
+        record["status"] = "rolled_back"
+        return self._copy_record(record)
+
+    def history(self) -> list[dict[str, Any]]:
+        return [self._copy_record(self._experiments[key]["record"]) for key in sorted(self._experiments)]
+
+    def _measure(
+        self,
+        runner: Callable[[Path], float],
+        experiment_id: str,
+        label: str,
+        count: int,
+    ) -> list[float]:
+        samples = []
+        for sample_index in range(count):
+            with tempfile.TemporaryDirectory(
+                prefix=f"autodev-{experiment_id}-{label}-{sample_index}-",
+                dir=self.workspace_root,
+            ) as directory:
+                workspace = Path(directory)
+                inspect.signature(runner).bind(workspace)
+                value = float(runner(workspace))
+                if not math.isfinite(value):
+                    raise ValueError(f"Runner {label!r} returned a non-finite measurement.")
+                samples.append(value)
+        return samples
+
+    def _get_experiment(self, experiment_id: str) -> dict[str, Any]:
+        try:
+            return self._experiments[experiment_id]
+        except KeyError as exc:
+            raise KeyError(f"Experiment {experiment_id!r} not found.") from exc
+
+    @staticmethod
+    def _copy_record(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **record,
+            "baseline_samples": list(record["baseline_samples"]),
+            "candidate_samples": {
+                key: list(value) for key, value in record["candidate_samples"].items()
+            },
+            "candidate_results": {
+                key: dict(value) for key, value in record["candidate_results"].items()
+            },
+        }
+
+
+AutonomousExperimentEngine = EvolutionExperimentEngine

@@ -1,0 +1,49 @@
+{
+  "iterations": 5,
+  "metrics": {
+    "architecture_analysis_latency": {
+      "iterations": 5,
+      "max_seconds": 0.00731352,
+      "mean_seconds": 0.00429988,
+      "median_seconds": 0.00382545,
+      "min_seconds": 0.00169658
+    },
+    "evolution_cycle_latency": {
+      "iterations": 5,
+      "max_seconds": 0.01335557,
+      "mean_seconds": 0.01147554,
+      "median_seconds": 0.01167018,
+      "min_seconds": 0.0081464
+    },
+    "experiment_execution_latency": {
+      "iterations": 5,
+      "max_seconds": 0.00342956,
+      "mean_seconds": 0.00190433,
+      "median_seconds": 0.00103276,
+      "min_seconds": 0.00092496
+    },
+    "knowledge_graph_construction_latency": {
+      "iterations": 5,
+      "max_seconds": 0.00010748,
+      "mean_seconds": 6.723e-05,
+      "median_seconds": 5.851e-05,
+      "min_seconds": 5.256e-05
+    },
+    "optimization_latency": {
+      "iterations": 5,
+      "max_seconds": 0.0001266,
+      "mean_seconds": 6.528e-05,
+      "median_seconds": 4.936e-05,
+      "min_seconds": 4.85e-05
+    },
+    "research_planning_latency": {
+      "iterations": 5,
+      "max_seconds": 4.258e-05,
+      "mean_seconds": 2.423e-05,
+      "median_seconds": 2.182e-05,
+      "min_seconds": 1.633e-05
+    }
+  },
+  "notes": "Local microbenchmarks use a one-module project; timings depend on machine load and are not release-to-release performance claims.",
+  "version": "4.0"
+}

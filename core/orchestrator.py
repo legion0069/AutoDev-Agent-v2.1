@@ -81,6 +81,17 @@ from core.agent_metrics import AgentMetricsTracker
 from core.collaboration_engine import CollaborationEngine as V38CollaborationEngine
 from core.multi_agent.agent_registry import AgentDescriptor, AgentRole
 from core.multi_agent_runtime import MultiAgentRuntime
+from core.organization_manager import OrganizationManager
+from core.project_manager import ProjectManager
+from core.resource_manager import ResourceManager
+from core.team_builder import TeamBuilder
+from core.engineering_manager import EngineeringManager as V39EngineeringManager
+from core.risk_manager import RiskManager
+from core.delivery_manager import DeliveryManager
+from core.engineering_analytics import EngineeringAnalytics
+from core.adaptive_planner import AdaptivePlanner
+from core.executive_dashboard import ExecutiveDashboard as V39ExecutiveDashboard
+from core.evolution_controller import EvolutionController
 from core.decision_engine import DecisionEngine as StrategyDecisionEngine
 from core.explainability import ExplainabilityEngine
 from core.hypothesis_engine import HypothesisEngine
@@ -337,6 +348,19 @@ class Orchestrator:
         multi_agent_runtime: Optional[MultiAgentRuntime] = None,
         collaboration_engine: Optional[V38CollaborationEngine] = None,
         agent_metrics_tracker: Optional[AgentMetricsTracker] = None,
+        organization_mode: bool = False,
+        organization_manager: Optional[OrganizationManager] = None,
+        project_manager: Optional[ProjectManager] = None,
+        resource_manager: Optional[ResourceManager] = None,
+        team_builder: Optional[TeamBuilder] = None,
+        engineering_manager: Optional[V39EngineeringManager] = None,
+        risk_manager: Optional[RiskManager] = None,
+        delivery_manager: Optional[DeliveryManager] = None,
+        engineering_analytics: Optional[EngineeringAnalytics] = None,
+        adaptive_planner: Optional[AdaptivePlanner] = None,
+        executive_dashboard: Optional[V39ExecutiveDashboard] = None,
+        evolution_mode: bool = False,
+        evolution_controller: Optional[EvolutionController] = None,
     ) -> None:
         """
         Initializes Orchestrator Version 3 with injectable subsystems (v2.0 - v3.0).
@@ -348,6 +372,15 @@ class Orchestrator:
         self.tasks_path = Path(tasks_path).resolve()
         self.logger = setup_logger(log_dir=log_dir)
         self.coordination_mode = coordination_mode
+        self.organization_mode = bool(organization_mode)
+        self.evolution_mode = bool(evolution_mode)
+        self.evolution_controller = evolution_controller
+        self.latest_evolution_report: Optional[dict[str, Any]] = None
+        self.latest_evolution_dashboard: Optional[dict[str, Any]] = None
+        self.latest_organization_dashboard: Optional[dict[str, Any]] = None
+        self.organization_report: Optional[dict[str, Any]] = None
+        self._organization_project_id = "CURRENT-PROJECT"
+        self._organization_team_id: Optional[str] = None
         self.ha_coordinator = ha_coordinator
         self.artifact_transfer_manager = artifact_transfer_manager
         self.kubernetes_controller = kubernetes_controller
@@ -520,7 +553,7 @@ class Orchestrator:
         self.multi_agent_runtime = multi_agent_runtime
         self.agent_metrics_tracker = agent_metrics_tracker
         self.multi_agent_collaboration = collaboration_engine
-        if self.coordination_mode.lower().replace("-", "_") in {"multi_agent", "collaborative"}:
+        if self.organization_mode or self.coordination_mode.lower().replace("-", "_") in {"multi_agent", "collaborative"}:
             self.agent_metrics_tracker = self.agent_metrics_tracker or AgentMetricsTracker(
                 self.project_root / "memory" / "agent_metrics"
             )
@@ -537,6 +570,277 @@ class Orchestrator:
                 self.multi_agent_collaboration = V38CollaborationEngine(
                     runtime=self.multi_agent_runtime,
                 )
+        self.organization_manager = organization_manager
+        self.project_manager = project_manager
+        self.resource_manager = resource_manager
+        self.team_builder = team_builder
+        self.v39_engineering_manager = engineering_manager
+        self.risk_manager = risk_manager
+        self.delivery_manager = delivery_manager
+        self.engineering_analytics = engineering_analytics
+        self.adaptive_planner = adaptive_planner
+        self.v39_executive_dashboard = executive_dashboard
+        if self.organization_mode:
+            self.organization_manager = self.organization_manager or OrganizationManager(self.multi_agent_runtime)
+            self.project_manager = self.project_manager or ProjectManager()
+            self.resource_manager = self.resource_manager or ResourceManager()
+            self.team_builder = self.team_builder or TeamBuilder(
+                self.organization_manager,
+                self.multi_agent_runtime,
+                self.agent_metrics_tracker,
+            )
+            self.v39_engineering_manager = self.v39_engineering_manager or V39EngineeringManager()
+            self.risk_manager = self.risk_manager or RiskManager()
+            self.delivery_manager = self.delivery_manager or DeliveryManager()
+            self.engineering_analytics = self.engineering_analytics or EngineeringAnalytics(
+                self.project_root / "memory" / "engineering_metrics"
+            )
+            self.adaptive_planner = self.adaptive_planner or AdaptivePlanner()
+            self.v39_executive_dashboard = self.v39_executive_dashboard or V39ExecutiveDashboard()
+        if self.evolution_mode:
+            self.evolution_controller = self.evolution_controller or EvolutionController(
+                self.project_root,
+                learning_engine=self.evolving_engine.learning_engine,
+                indexer=self.incremental_indexer,
+                benchmark_engine=self.performance_profiler,
+            )
+
+    def _prepare_organization_cycle(
+        self,
+        tasks: List[Task],
+        completed_task_ids: set[str],
+        context: Dict[str, Any],
+    ) -> List[Task]:
+        """Builds organization-mode project context without changing the legacy path."""
+        if not self.organization_mode:
+            return tasks
+        assert self.project_manager is not None
+        assert self.organization_manager is not None
+        assert self.team_builder is not None
+        assert self.adaptive_planner is not None
+        project_id = self._organization_project_id
+        project = self.project_manager.get_project(project_id)
+        if project is None:
+            project = self.project_manager.create_project(
+                str(context.get("project_name") or self.project_root.name or "AutoDev Project"),
+                description="Managed execution project for the active AutoDev workflow.",
+                project_id=project_id,
+            )
+        existing_backlog_ids = {item.get("id") for item in project.backlog}
+        for task in tasks:
+            if task.id not in existing_backlog_ids:
+                self.project_manager.add_backlog_item(project_id, task.to_dict())
+        if not project.epic_ids:
+            self.project_manager.create_epic(project_id, "Active delivery", "Tasks in the active development plan.")
+        if not project.sprint_ids:
+            self.project_manager.create_sprint(
+                project_id,
+                goal=f"Deliver {len(tasks)} active plan task(s)",
+                capacity_points=max(1, len(tasks) * 3),
+            )
+        if not project.release_ids:
+            self.project_manager.create_release(project_id, "unreleased")
+        if self._organization_team_id is None:
+            team = self.team_builder.build_team(
+                str(context.get("project_name") or self.project_root.name or "AutoDev"),
+                technology_stack=context.get("technology_stack", []),
+                project_size="large" if len(tasks) >= 10 else "small",
+            )
+            self._organization_team_id = str(team["team_id"])
+        ordered_records = self.adaptive_planner.order_backlog(tasks, completed_task_ids)
+        by_id = {task.id: task for task in tasks}
+        context["organization_context"] = {
+            "project_id": project_id,
+            "team_id": self._organization_team_id,
+            "team": self.organization_manager.team_status(self._organization_team_id),
+        }
+        return [
+            by_id[item["id"]]
+            for item in ordered_records
+            if item["id"] in by_id
+            and item["id"] not in completed_task_ids
+            and by_id[item["id"]].status.lower() != "completed"
+        ]
+
+    def _update_organization_dashboard(
+        self,
+        success: bool,
+        quality_score: float,
+    ) -> None:
+        if not self.organization_mode:
+            return
+        assert self.organization_manager is not None
+        assert self.project_manager is not None
+        assert self.risk_manager is not None
+        assert self.delivery_manager is not None
+        assert self.engineering_analytics is not None
+        assert self.v39_engineering_manager is not None
+        assert self.v39_executive_dashboard is not None
+        project = self.project_manager.get_project(self._organization_project_id)
+        if project and project.release_ids:
+            release_id = project.release_ids[-1]
+        else:
+            release_id = "unreleased"
+        project_dashboard = self.project_manager.project_dashboard()
+        release_records = [
+            release
+            for project_record in project_dashboard["projects"]
+            for release in project_record["releases"]
+        ]
+        risks = self.risk_manager.analyze({"quality_score": quality_score}).to_dict()
+        readiness = self.delivery_manager.assess_release(
+            release_id,
+            checks={
+                "tests_complete": success,
+                "quality_approved": success and quality_score >= 80.0,
+            },
+            risks=risks,
+        )
+        report = self.v39_engineering_manager.generate_report(
+            project_dashboard=project_dashboard,
+            team_statuses=[
+                self.organization_manager.team_status(team.team_id)
+                for team in self.organization_manager.list_teams()
+            ],
+            deployment_readiness=readiness,
+        )
+        self.organization_report = report
+        learning_events = []
+        if self.evolving_engine is not None:
+            learning_events = [
+                event.to_dict()
+                for event in self.evolving_engine.learning_engine.list_events()
+            ]
+        self.latest_organization_dashboard = self.v39_executive_dashboard.build(
+            organization=self.organization_manager.organization_summary(),
+            projects=project_dashboard,
+            releases=release_records,
+            risks=risks,
+            performance=self.engineering_analytics.metrics(),
+            learning={"event_count": len(learning_events), "events": learning_events},
+            benchmarks=self.performance_profiler.generate_report().to_dict(),
+        )
+
+    def _run_evolution_cycle(
+        self,
+        symbol_graph: Any,
+        execution_duration: float,
+        success: bool,
+    ) -> None:
+        if not self.evolution_mode:
+            return
+        assert self.evolution_controller is not None
+        learning_events = self.evolving_engine.learning_engine.list_events()
+        analytics = (
+            self.engineering_analytics.metrics()
+            if self.engineering_analytics is not None
+            else {}
+        )
+        learning_dashboard = self.evolving_engine.get_learning_dashboard()
+        benchmark_report = self.performance_profiler.generate_report().to_dict()
+        profiled_stages = benchmark_report.get("subsystems", {})
+
+        def profiled_latency(name: str) -> dict[str, float]:
+            metrics = profiled_stages.get(name, {}) if isinstance(profiled_stages, Mapping) else {}
+            mean = metrics.get("mean") if isinstance(metrics, Mapping) else None
+            return {"latency_seconds": float(mean)} if isinstance(mean, (int, float)) else {}
+
+        cache_stats = self.cache_manager.get_stats().get("caches", {})
+        cache_hits = sum(int(item.get("hit_count", 0)) for item in cache_stats.values())
+        cache_misses = sum(int(item.get("miss_count", 0)) for item in cache_stats.values())
+        cache_requests = cache_hits + cache_misses
+        agent_metrics = (
+            self.agent_metrics_tracker.all_metrics()
+            if self.agent_metrics_tracker is not None
+            else {}
+        )
+        collaboration_tasks = sum(
+            int(item.get("task_count", 0)) for item in agent_metrics.values()
+        )
+        collaboration_failures = sum(
+            float(item.get("failure_rate", 0.0)) * int(item.get("task_count", 0))
+            for item in agent_metrics.values()
+        )
+        resource_usage = (
+            self.resource_manager.resource_usage()
+            if self.resource_manager is not None
+            else {"queue_count": 0}
+        )
+        prompt_templates = self.evolving_engine.prompt_optimization_engine.get_all_templates()
+        reasoning_cache = self.reasoning_engine.statistics()
+        execution_metrics = {
+            "latency_seconds": execution_duration,
+            "error_rate": 0.0 if success else 1.0,
+        }
+        self.latest_evolution_report = self.evolution_controller.run_cycle(
+            symbol_graph=symbol_graph,
+            observations={
+                "execution": {**execution_metrics, "success": success},
+                "performance": {
+                    "execution": execution_metrics,
+                    "planning": profiled_latency("Planning"),
+                    "learning": profiled_latency("Learning"),
+                },
+                "optimization_metrics": {
+                    "planning": profiled_latency("Planning"),
+                    "scheduling": {"queue_count": int(resource_usage.get("queue_count", 0))},
+                    "prompting": {"template_count": len(prompt_templates)},
+                    "reasoning": reasoning_cache,
+                    "collaboration": {
+                        "task_count": collaboration_tasks,
+                        "error_rate": (
+                            collaboration_failures / collaboration_tasks
+                            if collaboration_tasks else 0.0
+                        ),
+                    },
+                    "learning": {
+                        "event_count": len(learning_events),
+                        "knowledge_count": int(learning_dashboard.get("knowledge_items_count", 0)),
+                    },
+                    "execution": execution_metrics,
+                    "caching": {
+                        "hit_ratio": cache_hits / cache_requests if cache_requests else 0.0,
+                    },
+                },
+                "analytics": analytics or learning_dashboard.get("kpi_metrics", {}),
+                "learning_recommendations": learning_dashboard.get("top_patterns", []),
+                "benchmarks": {
+                    "orchestration": (
+                        benchmark_report
+                        if isinstance(benchmark_report, dict)
+                        else {"report": str(benchmark_report)}
+                    )
+                },
+            },
+        )
+
+    def _update_v40_dashboard(
+        self,
+        success: bool,
+        quality_score: float,
+        execution_duration: float = 0.0,
+    ) -> None:
+        if self.evolution_mode:
+            self._run_evolution_cycle(
+                self.incremental_indexer.graph,
+                execution_duration=execution_duration,
+                success=success,
+            )
+        self._update_organization_dashboard(success, quality_score)
+        if not self.evolution_mode:
+            return
+        if self.latest_organization_dashboard is not None:
+            self.latest_organization_dashboard["evolution"] = self.latest_evolution_report
+            self.latest_evolution_dashboard = self.latest_organization_dashboard
+            return
+        learning_events = self.evolving_engine.learning_engine.list_events()
+        benchmarks = self.performance_profiler.generate_report().to_dict()
+        dashboard = V39ExecutiveDashboard().build(
+            learning={"event_count": len(learning_events)},
+            benchmarks=benchmarks if isinstance(benchmarks, dict) else {"report": str(benchmarks)},
+        )
+        dashboard["evolution"] = self.latest_evolution_report
+        self.latest_evolution_dashboard = dashboard
 
     def _register_default_runtime_agents(self) -> None:
         """Registers non-executing role descriptors; legacy pipeline still executes tasks."""
@@ -855,6 +1159,8 @@ class Orchestrator:
 
                 self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
+                if self.evolution_mode:
+                    self._update_v40_dashboard(True, 0.0, duration)
                 return ExecutionSummary(
                     overall_success=True,
                     tasks_completed=[],
@@ -999,6 +1305,12 @@ class Orchestrator:
 
             # 6. Sort remaining tasks by priority (1 is highest)
             pending_tasks.sort(key=lambda t: t.priority)
+            if self.organization_mode:
+                pending_tasks = self._prepare_organization_cycle(
+                    all_today_tasks,
+                    completed_set,
+                    context,
+                )
 
             self.logger.info(
                 "Active Day: %d/%d | Total Tasks: %d | Completed: %d | Pending to execute: %d",
@@ -1026,6 +1338,8 @@ class Orchestrator:
 
                 self._finalize_incremental_run(orchestration_start)
                 duration = round(time.time() - start_time, 3)
+                if self.evolution_mode:
+                    self._update_v40_dashboard(True, 0.0, duration)
                 return ExecutionSummary(
                     overall_success=True,
                     tasks_completed=[],
@@ -1053,6 +1367,22 @@ class Orchestrator:
                 task_start = time.time()
                 assignment: Optional[dict[str, Any]] = None
                 retry_res: Any = None
+                resource_allocation = None
+                task_quality_score = 0.0
+                if self.organization_mode:
+                    assert self.resource_manager is not None
+                    assert self.v39_engineering_manager is not None
+                    resource_allocation = self.resource_manager.allocate(
+                        "workers",
+                        1.0,
+                        owner=task.id,
+                        priority=-task.priority,
+                    )
+                    self.v39_engineering_manager.record_task(
+                        task.id,
+                        "IN_PROGRESS",
+                        team_id=self._organization_team_id,
+                    )
 
                 try:
                     if self.multi_agent_runtime is not None:
@@ -1091,6 +1421,8 @@ class Orchestrator:
                         "estimated_files": list(getattr(task, "estimated_files", [])),
                         "dependencies": list(getattr(task, "dependencies", [])),
                     }
+                    if self.organization_mode:
+                        task_context["organization"] = context.get("organization_context", {})
                     context["task_reasoning"] = self.reasoning_engine.reason(
                         {"title": task.title, "description": task.description},
                         task_context,
@@ -1401,6 +1733,7 @@ class Orchestrator:
                         and review_result.success
                         and not review_result.should_regenerate
                     )
+                    task_quality_score = float(review_result.overall_quality_score)
 
                     # Record metrics
                     quality_scores.append(review_result.overall_quality_score)
@@ -1545,6 +1878,36 @@ class Orchestrator:
                         except Exception:
                             pass
 
+                finally:
+                    if self.organization_mode:
+                        assert self.resource_manager is not None
+                        assert self.project_manager is not None
+                        assert self.v39_engineering_manager is not None
+                        assert self.engineering_analytics is not None
+                        if resource_allocation is not None:
+                            self.resource_manager.release(resource_allocation.allocation_id)
+                        completed = task.id in tasks_completed
+                        status = "COMPLETED" if completed else "FAILED" if task.id in tasks_failed else "BLOCKED"
+                        self.v39_engineering_manager.record_task(
+                            task.id,
+                            status,
+                            team_id=self._organization_team_id,
+                            quality_score=task_quality_score,
+                            review_duration_seconds=0.0,
+                        )
+                        self.project_manager.update_backlog_status(
+                            self._organization_project_id,
+                            task.id,
+                            status.lower(),
+                        )
+                        elapsed_hours = max(0.0, time.time() - task_start) / 3600.0
+                        self.engineering_analytics.record(
+                            completed=completed,
+                            lead_time_hours=elapsed_hours,
+                            cycle_time_hours=elapsed_hours,
+                            defects=0 if completed else 1,
+                        )
+
             # 8. Check if all tasks for the active day are complete
             current_completed_set = set(self.state_manager.get_state().completed_tasks)
             today_all_ids = {t.id for t in all_today_tasks}
@@ -1575,6 +1938,7 @@ class Orchestrator:
             avg_pass_rate = round(sum(pass_rates) / len(pass_rates), 2) if pass_rates else 100.0
 
             overall_success = len(tasks_failed) == 0 and (len(tasks_completed) > 0 or len(pending_tasks) == 0)
+            self._update_v40_dashboard(overall_success, avg_score, duration)
 
             self.logger.info("=" * 60)
             self.logger.info(

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from core.learning.learning_models import PerformanceEvolutionRecord
 from core.learning.performance_evolution import PerformanceEvolutionEngine
+from core.performance_evolution import PerformanceEvolutionEngine as V40PerformanceEvolutionEngine
 
 
 @pytest.fixture
@@ -86,3 +87,26 @@ def test_get_latest_and_all_records(perf_engine: PerformanceEvolutionEngine):
     records = perf_engine.get_records_by_version("3.1.0")
     assert len(records) == 1
     assert records[0].version == "3.1.0"
+
+
+def test_v40_performance_analysis_covers_cache_and_all_execution_stages():
+    engine = V40PerformanceEvolutionEngine()
+    report = engine.analyze({
+        "cpu": {"process_cpu_seconds": 61.0},
+        "memory": {"peak_bytes": 600 * 1024 * 1024},
+        "cache": {"hit_ratio": 0.25},
+        "planning": {"latency_seconds": 2.0},
+        "scheduling": {"latency_seconds": 0.5},
+        "execution": {"latency_seconds": 6.0},
+        "learning": {"latency_seconds": 0.2},
+    })
+
+    assert set(report["stages"]) == {"planning", "scheduling", "execution", "learning"}
+    assert {item["domain"] for item in report["recommendations"]} >= {
+        "cpu",
+        "memory",
+        "cache",
+        "planning",
+        "execution",
+    }
+    assert engine.history == [report]

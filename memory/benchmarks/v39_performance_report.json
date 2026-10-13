@@ -1,0 +1,48 @@
+{
+  "benchmarks": {
+    "analytics_generation_latency": {
+      "iterations": 25,
+      "max_seconds": 1.586e-05,
+      "mean_seconds": 7.64e-06,
+      "min_seconds": 7.13e-06
+    },
+    "dashboard_generation_latency": {
+      "iterations": 25,
+      "max_seconds": 1.156e-05,
+      "mean_seconds": 8.23e-06,
+      "min_seconds": 7.89e-06
+    },
+    "organization_creation_latency": {
+      "iterations": 25,
+      "max_seconds": 3.83e-06,
+      "mean_seconds": 7.4e-07,
+      "min_seconds": 4.9e-07
+    },
+    "resource_allocation_latency": {
+      "iterations": 25,
+      "max_seconds": 3.314e-05,
+      "mean_seconds": 1.411e-05,
+      "min_seconds": 1.151e-05
+    },
+    "risk_analysis_latency": {
+      "iterations": 25,
+      "max_seconds": 3.76e-05,
+      "mean_seconds": 7.6e-06,
+      "min_seconds": 4.96e-06
+    },
+    "sprint_planning_latency": {
+      "iterations": 25,
+      "max_seconds": 3.807e-05,
+      "mean_seconds": 1.834e-05,
+      "min_seconds": 1.544e-05
+    },
+    "team_formation_latency": {
+      "iterations": 25,
+      "max_seconds": 0.000195,
+      "mean_seconds": 0.00011673,
+      "min_seconds": 0.00010142
+    }
+  },
+  "measurement_note": "Local microbenchmarks; timings are machine- and load-dependent.",
+  "version": "3.9"
+}

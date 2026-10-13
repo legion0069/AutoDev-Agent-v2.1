@@ -1,6 +1,6 @@
-# AutoDev 🚀
+# AutoDev — Autonomous Software Engineering Organization (Version 3.9)
 
-> **Autonomous Enterprise Ecosystem (Federation of AI Companies)** — Version 3.5 (Inter-Company Message Bus, Enterprise Service Registry & Router, Federated Zero-Trust Security, Shared Services Suite, Global Knowledge Graph, Resource Marketplace, Cross-Company CPM Scheduler, Enterprise Portfolio Management, Multi-Tier Governance Policy Engine, Disaster Recovery & Automated Failover, Global Telemetry Dashboard)
+> Current release: **Version 3.9**. The Version 3.5 federation material below is retained as historical architecture documentation.
 
 AutoDev is an enterprise-grade autonomous software company platform implemented natively using **100% Python Standard Library** (zero external orchestration frameworks, zero LangGraph, zero CrewAI, zero AutoGen, zero Haystack, zero external databases, zero external message brokers). 
 
@@ -1014,3 +1014,166 @@ repository-wide speedup or latency guarantees.
 See [`v38_engineering_report.md`](./v38_engineering_report.md) for the detailed
 message protocol, blackboard, negotiation, consensus, scheduling, integration,
 benchmark methodology, and verified test results.
+
+## 🏢 Version 3.9 — Opt-in Autonomous Engineering Organization
+
+Version 3.9 adds an organization-management layer around the existing enterprise
+models and Version 3.8 agent runtime. It manages teams and reporting hierarchy,
+projects, epics, sprints, releases, resource reservations, task progress, risk,
+release readiness, engineering metrics, adaptive dependency-safe backlog order,
+and executive dashboard exports.
+
+The new workflow is **opt-in**. Existing callers retain the single-agent
+workflow by default. Enable the organization layer explicitly:
+
+```python
+from core.orchestrator import Orchestrator
+
+orchestrator = Orchestrator(
+    project_root=".",
+    organization_mode=True,
+)
+```
+
+When enabled, the orchestrator builds a project and team context, orders pending
+work by priority while honoring dependencies, reserves a worker resource for
+each task, records task and engineering metrics, and publishes an organization
+dashboard. Code generation, testing, review, and Git operations continue to use
+the established AutoDev pipeline. The legacy single-agent default is unchanged.
+
+```mermaid
+flowchart TD
+    Requirement[Requirement and task plan] --> Project[ProjectManager]
+    Project --> Adaptive[AdaptivePlanner]
+    Adaptive --> Team[TeamBuilder and OrganizationManager]
+    Team --> Resource[ResourceManager]
+    Resource --> Runtime[Version 3.8 capability discovery and negotiation]
+    Runtime --> Legacy[Existing coder / tester / reviewer / Git pipeline]
+    Legacy --> Progress[EngineeringManager and EngineeringAnalytics]
+    Progress --> Risk[RiskManager]
+    Risk --> Delivery[DeliveryManager]
+    Delivery --> Dashboard[ExecutiveDashboard JSON / Markdown / HTML]
+```
+
+The organization hierarchy is a team-level reporting tree: teams can have
+parent teams, declared capabilities, role assignments, member agents, lifecycle
+state, and health derived from the runtime's availability status. Team building
+selects capability matches deterministically, preferring historical success,
+lower workload, higher agent priority, and then agent ID. Resource requests
+share explicit capacities and are admitted by descending priority with stable
+FIFO ties; releases promote queued requests without violating the capacity
+limit.
+
+### Version 3.9 APIs
+
+| Component | Public API |
+| :--- | :--- |
+| `OrganizationManager` | `create_team()`, `remove_team()`, `assign_agent()`, `remove_agent()`, `team_status()`, `organization_summary()` |
+| `ProjectManager` | `create_project()`, `create_epic()`, `create_sprint()`, `create_release()`, `project_dashboard()` |
+| `ResourceManager` | `allocate()`, `release()`, `forecast()`, `resource_usage()` |
+| `TeamBuilder` | `build_team()`, `recommend_agents()` |
+| `EngineeringManager` | `record_task()`, `generate_report()`, `task_history()` |
+| `RiskManager` | `analyze()` |
+| `DeliveryManager` | `assess_release()`, `release_readiness()` |
+| `EngineeringAnalytics` | `record()`, `metrics()`, `history()` |
+| `AdaptivePlanner` | `order_backlog()`, `replan()` |
+| `ExecutiveDashboard` | `build()`, `export_json()`, `export_markdown()`, `export_html()` |
+
+The project manager reuses the established enterprise `Epic`, `SprintPlan`,
+`ReleaseCandidate`, and enum models. The existing enterprise managers and
+Version 3.8 scheduler/runtime remain available and unchanged; organization mode
+adds lifecycle and status integration without changing legacy constructor
+positions or default behavior.
+
+### Version 3.9 benchmark artifacts
+
+Run the standard-library local microbenchmark harness:
+
+```console
+python benchmarks/v39_benchmarks.py
+```
+
+The runner records 25 samples for organization creation, team formation, sprint
+planning, resource allocation, risk analysis, analytics generation, and
+dashboard generation. It writes
+[`memory/benchmarks/v39_benchmark_results.json`](./memory/benchmarks/v39_benchmark_results.json),
+[`memory/benchmarks/v39_benchmark_history.json`](./memory/benchmarks/v39_benchmark_history.json),
+and [`memory/benchmarks/v39_performance_report.json`](./memory/benchmarks/v39_performance_report.json).
+Values are local microbenchmark measurements, not performance guarantees or
+comparisons against an earlier release.
+
+See [`v39_engineering_report.md`](./v39_engineering_report.md) for the
+architecture, integration details, measured latencies, and verification
+results.
+
+## Version 4.0 — Autonomous Software Engineering Intelligence
+
+Version 4.0 adds an optional, deterministic evolution cycle that combines
+engineering research, architecture and quality analysis, isolated experiments,
+optimization recommendations, performance telemetry, and a software knowledge
+graph. Existing task planning and orchestration remain the default; enable
+evolution programmatically with `Orchestrator(evolution_mode=True)`.
+
+```mermaid
+flowchart TD
+    Execution[Existing planning, reasoning, collaboration, engineering, tests]
+    --> Learning[Existing reflection and learning]
+    --> Research[ResearchEngine]
+    --> Experiment[EvolutionExperimentEngine]
+    --> Architecture[ArchitectureEvolutionEngine]
+    --> Optimize[SelfOptimizer]
+    --> Roadmap[ContinuousImprovementEngine]
+    --> Graph[SoftwareKnowledgeGraph]
+    --> Controller[EvolutionController]
+    --> Dashboard[Executive dashboard]
+```
+
+### Version 4.0 subsystems and APIs
+
+| Component | Main public APIs | Purpose |
+| :--- | :--- | :--- |
+| `ResearchEngine` | `discover_problem()`, `generate_research_plan()`, `evaluate_results()`, `publish_findings()` | Rank evidence-backed engineering problems, compare candidate results, and persist stable findings. |
+| `ArchitectureEvolutionEngine` | `analyze()` | Reuse repository analysis to report architectures, hotspots, dependency cycles, alternatives, and maintainability estimates. |
+| `EvolutionExperimentEngine` | `create_experiment()`, `run()`, `compare()`, `rollback()` | Run repeated baseline/candidate measurements, compare statistically, and discard isolated experiment workspaces. The legacy `ExperimentEngine` API remains available. |
+| `SelfOptimizer` | `optimize()` | Produce evidence-based planning, scheduling, prompting, reasoning, collaboration, learning, execution, and caching proposals without applying behavior-changing edits. |
+| `CodeQualityEngine` | `analyze()` | Report complexity, maintainability, coupling, cohesion, duplication, possible dead code, and architecture violations using existing analyzers and the SymbolGraph. |
+| `DesignPatternEngine` | `analyze()` | Detect selected patterns and anti-patterns from Python ASTs and recommend review/refactoring. |
+| `PerformanceEvolutionEngine` | `capture()`, `analyze()` | Normalize CPU, peak memory, cache, and planning/scheduling/execution/learning telemetry into recommendations. |
+| `ContinuousImprovementEngine` | `generate_roadmap()` | Merge research, architecture, performance, learning, reflection, analytics, and engineering recommendations into a deterministic priority-ranked roadmap. |
+| `SoftwareKnowledgeGraph` | `add_repository()`, `add_artifact()`, `add_edge()`, `neighbors()`, `traverse()`, `shortest_path()`, `search()`, `export_json()` | Represent modules, classes, functions, dependencies, architecture, patterns, experiments, benchmarks, learning, and evolution history. |
+| `EvolutionController` | `run_cycle()` | Coordinate the evolution subsystems, read learning and benchmark evidence, and publish one ordered cycle report. |
+
+The knowledge graph sorts nodes, edges, and neighbors for deterministic output
+and traversal. Each evolution cycle links its research finding, experiment,
+architecture/pattern evidence, learning events, and benchmarks to the cycle
+history node. The orchestrator reuses its incremental SymbolGraph, learning
+engine, performance profiler, and executive dashboard rather than replacing
+existing components.
+
+Experiment evaluators are trusted Python callables. Each sample runs with its
+own temporary working directory, which isolates candidate-created files but is
+not an operating-system security sandbox. Rollback discards those workspaces
+and clears any selected candidate; no candidate is automatically deployed.
+Self-optimization is recommendation-only and leaves external behavior
+unchanged.
+
+### Version 4.0 benchmark artifacts
+
+Run the standard-library benchmark harness:
+
+```console
+python benchmarks/v40_benchmarks.py
+```
+
+It records research planning, architecture analysis, experiment execution,
+knowledge graph construction, optimization, and full evolution-cycle latency.
+The five-iteration local run writes
+[`memory/benchmarks/v40_benchmark_results.json`](./memory/benchmarks/v40_benchmark_results.json),
+[`memory/benchmarks/v40_benchmark_history.json`](./memory/benchmarks/v40_benchmark_history.json),
+and [`memory/benchmarks/v40_performance_report.json`](./memory/benchmarks/v40_performance_report.json).
+These are small one-module microbenchmarks; timings vary with the host and do
+not claim release-to-release performance gains.
+
+See [`v40_engineering_report.md`](./v40_engineering_report.md) for the full
+architecture, workflow, public API, benchmark measurements, compatibility, and
+validation details.
