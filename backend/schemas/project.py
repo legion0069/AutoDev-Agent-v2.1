@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import time
 from typing import Any, Literal
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,6 +21,9 @@ class ProjectCreateRequest(BaseModel):
     daily_commit_target: int = Field(default=4, ge=1, le=8)
     repository: str = Field(default="", max_length=500)
     mode: Literal["autonomous", "approval"] = "autonomous"
+    schedule_enabled: bool = True
+    schedule_time: str = "09:00"
+    timezone: str = "UTC"
 
     @field_validator("project_name", "description")
     @classmethod
@@ -64,6 +69,47 @@ class ProjectCreateRequest(BaseModel):
             raise ValueError("Repository must be a GitHub HTTPS or SSH URL.")
         return value
 
+    @field_validator("schedule_time")
+    @classmethod
+    def validate_schedule_time(cls, value: str) -> str:
+        try:
+            return time.fromisoformat(value).isoformat(timespec="minutes")
+        except ValueError as exc:
+            raise ValueError("Schedule time must use 24-hour HH:MM format.") from exc
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Timezone must be a valid IANA timezone.") from exc
+        return value
+
+
+class ProjectScheduleRequest(BaseModel):
+    enabled: bool
+    schedule_time: str = Field(pattern=r"^\d{2}:\d{2}$")
+    timezone: str = Field(min_length=1, max_length=100)
+
+    @field_validator("schedule_time")
+    @classmethod
+    def validate_schedule_time(cls, value: str) -> str:
+        try:
+            time.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("Schedule time must use 24-hour HH:MM format.") from exc
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Timezone must be a valid IANA timezone.") from exc
+        return value
+
 
 class ProjectActionRequest(BaseModel):
     project_id: str | None = None
@@ -90,6 +136,11 @@ class ProjectSummary(BaseModel):
     updated_at: str
     repository: str = ""
     error: str | None = None
+    schedule_enabled: bool = False
+    schedule_time: str = "09:00"
+    timezone: str = "UTC"
+    next_run_at: str | None = None
+    last_run_at: str | None = None
 
 
 class ApiMessage(BaseModel):

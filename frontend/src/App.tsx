@@ -8,6 +8,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { RoadmapPage } from "./pages/RoadmapPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotificationsProvider } from "./components/Notifications";
+import { LogStreamProvider } from "./hooks/useLogs";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,19 +24,21 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <NotificationsProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route index element={<DashboardPage />} />
-              <Route path="projects" element={<ProjectsPage />} />
-              <Route path="execution" element={<ExecutionPage />} />
-              <Route path="roadmap" element={<RoadmapPage />} />
-              <Route path="history" element={<HistoryPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+        <LogStreamProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="projects" element={<ProjectsPage />} />
+                <Route path="execution" element={<ExecutionPage />} />
+                <Route path="roadmap" element={<RoadmapPage />} />
+                <Route path="history" element={<HistoryPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </LogStreamProvider>
       </NotificationsProvider>
     </QueryClientProvider>
   );

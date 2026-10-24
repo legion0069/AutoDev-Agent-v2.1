@@ -23,6 +23,11 @@ export interface ProjectSummary {
   tech_stack?: string[];
   working_hours?: number;
   daily_commit_target?: number;
+  schedule_enabled?: boolean;
+  schedule_time?: string;
+  timezone?: string;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
   mode?: "autonomous" | "approval";
   commits?: CommitInfo[];
 }
@@ -106,6 +111,9 @@ export interface ProjectCreatePayload {
   daily_commit_target: number;
   repository: string;
   mode: "autonomous" | "approval";
+  schedule_enabled: boolean;
+  schedule_time: string;
+  timezone: string;
 }
 
 export interface ProjectCreateResponse {
@@ -122,6 +130,9 @@ export interface SettingsData {
   default_working_hours: number;
   theme: string;
   backend_url: string;
+  schedule_enabled: boolean;
+  schedule_time: string;
+  timezone: string;
 }
 
 export interface GitHubStatus {

@@ -1,16 +1,16 @@
-# AutoDev — Autonomous Software Engineering Intelligence (Version 5.2)
+# AutoDev — Autonomous Software Engineering Intelligence (Version 6.0)
 
-> Current release: **Version 5.2**. The Version 5.1 graphical dashboard and FastAPI interface are extended with persisted day/milestone execution, validated commits, and verified GitHub pushes.
+> Current release: **Version 6.0**. AutoDev adds timezone-aware daily scheduling and unattended one-day-at-a-time execution to its persisted milestone engine.
 
 The product flow now starts from a user request containing a project description, technology stack, duration, GitHub repository, and execution mode. It then drives requirement understanding, architecture design, project breakdown, daily planning, incremental validation, and automatic bug fixing before committing and pushing validated work.
 
-AutoDev is an enterprise-grade autonomous software company platform. The existing engineering core continues to use Python's standard library; the optional Version 5.1 web interface adds a FastAPI backend and a React dashboard without moving AI or planning logic into the frontend.
+AutoDev is an enterprise-grade autonomous software company platform. The existing engineering core continues to use Python's standard library; the optional Version 6.0 web interface adds a FastAPI backend and a React dashboard without moving AI or planning logic into the frontend.
 
 Version 3.5 evolves AutoDev from a single autonomous enterprise (v3.4) into a macroscopic **Autonomous Enterprise Ecosystem & Federation of AI Companies**. Instead of a single company, AutoDev v3.5 orchestrates an entire ecosystem of autonomous software enterprises collaborating, sharing institutional knowledge, trading compute and engineering capacity in a double-auction marketplace, resolving cross-enterprise dependencies via Critical Path Method (CPM), enforcing Zero-Trust cryptographic security, and driving cross-company innovation initiatives.
 
 The platform coordinates **8 specialized corporate entities**, **10 executive federation agents**, and **12 macroscopic infrastructure subsystems** across an asynchronous, thread-safe, HMAC-SHA256 authenticated inter-company message bus.
 
-The core operates deterministically with zero external runtime dependencies, thread-safe concurrency (`threading.RLock`), SHA-256 tamper-evident audit trails, and backward-compatible CLI and engine APIs. The optional V5.1 web interface uses the dependencies listed in `requirements.txt` and `frontend/package.json`.
+The core operates deterministically with zero external runtime dependencies, thread-safe concurrency (`threading.RLock`), SHA-256 tamper-evident audit trails, and backward-compatible CLI and engine APIs. The optional V6.0 web interface uses the dependencies listed in `requirements.txt` and `frontend/package.json`.
 
 ---
 
@@ -1490,3 +1490,31 @@ Reconnect with `?after=<event_id>` to replay persisted log events.
 See [`v52_engineering_report.md`](./v52_engineering_report.md) for the
 engineering report, lifecycle diagrams, API/event specifications, and
 validation and benchmark summaries.
+
+## Version 6.0 — Scheduled Autonomous Execution
+
+New projects can be configured with a daily local start time, IANA timezone,
+and schedule enabled/paused state. The first run can still be started
+immediately from the dashboard; each subsequent run executes one roadmap day
+and waits for its next scheduled time. The dashboard reports the next run and
+lets users pause or re-enable the schedule. Manual pause/stop controls remain
+available. A project pause or stop also disables its daily schedule; manual
+resume does not silently re-enable unattended runs.
+Daily completion and execution failure generate in-app notifications; users
+can optionally enable browser desktop alerts for background-tab updates.
+
+The scheduler checks every 15 seconds, runs an overdue schedule once on the
+current local date (no multi-day catch-up), and records each run's local date
+to prevent a duplicate start that day. Existing projects without scheduling
+fields remain unscheduled after upgrade. Project state remains in the existing
+atomic JSON persistence store; the scheduler is an in-process, single-API-worker
+feature, so run one backend worker per data directory. Use a durable external
+worker/queue before deploying multiple API replicas.
+
+Project creation accepts optional `schedule_enabled` (default `true`),
+`schedule_time` (`HH:MM`, default `09:00`), and `timezone` (IANA timezone,
+default `UTC`). The `PUT /project/schedule?project_id=<id>` endpoint updates
+those values. `GET /project/status` and dashboard summaries include
+`next_run_at` and `last_run_at` in addition to schedule settings. Scheduled
+failures are visible as failed project state; enabled schedules retry at the
+next configured daily run, never in an unbounded same-day loop.

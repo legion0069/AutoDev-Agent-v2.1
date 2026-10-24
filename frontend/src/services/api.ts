@@ -63,6 +63,13 @@ export const apiService = {
     (await api.post<ProjectCreateResponse>("/project/create", payload)).data,
   action: async (action: "start" | "pause" | "resume" | "stop", projectId?: string) =>
     (await api.post(`/project/${action}`, projectId ? { project_id: projectId } : {})).data,
+  updateSchedule: async (
+    schedule: { enabled: boolean; schedule_time: string; timezone: string },
+    projectId?: string,
+  ) =>
+    (await api.put("/project/schedule", schedule, {
+      params: projectId ? { project_id: projectId } : {},
+    })).data,
   runDay: async (projectId?: string) =>
     (await api.post("/project/run-day", projectId ? { project_id: projectId } : {})).data,
   runMilestone: async (projectId?: string) =>

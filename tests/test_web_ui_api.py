@@ -119,6 +119,7 @@ def test_pause_resume_and_stop_controls_are_applied_between_daily_runs(tmp_path)
         while service.get_status(project_id)["status"] != "paused" and time.monotonic() < deadline:
             time.sleep(0.01)
         assert service.get_status(project_id)["status"] == "paused"
+        assert service.get_status(project_id)["schedule_enabled"] is False
 
         assert client.post("/project/resume", json={"project_id": project_id}).status_code == 200
         deadline = time.monotonic() + 5

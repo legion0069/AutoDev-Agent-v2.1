@@ -1,11 +1,43 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { X } from "lucide-react";
 import { Header } from "../components/Header";
 import { Sidebar } from "../components/Sidebar";
+import { useLogs } from "../hooks/useLogs";
+import { useNotifications } from "../components/Notifications";
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { logs, ready } = useLogs();
+  const { notify } = useNotifications();
+  const lastNotifiedId = useRef(0);
+  const initializedNotifications = useRef(false);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!initializedNotifications.current) {
+      lastNotifiedId.current = logs.length ? logs[logs.length - 1].event_id : 0;
+      initializedNotifications.current = true;
+      return;
+    }
+    const newEvents = logs.filter((event) => event.event_id > lastNotifiedId.current);
+    if (newEvents.length === 0) return;
+    lastNotifiedId.current = newEvents[newEvents.length - 1].event_id;
+    for (const event of newEvents) {
+      if (event.event === "execution.day_completed") continue;
+      if (["day_completed", "execution_finished"].includes(event.event)) {
+        notify(event.message);
+      } else if (event.event === "execution.failed") {
+        notify(event.message, "error");
+      } else {
+        continue;
+      }
+      if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") {
+        new Notification("AutoDev execution update", { body: event.message });
+      }
+    }
+  }, [logs, notify, ready]);
+
   return (
     <div className="min-h-screen bg-canvas text-slate-100">
       <Sidebar />
@@ -23,7 +55,7 @@ export function AppLayout() {
           <Outlet />
         </main>
         <footer className="border-t border-line/70 px-5 py-4 text-center text-[11px] text-slate-600 sm:px-8 lg:px-10">
-          AutoDev Engineering OS <span className="mx-2 text-slate-700">·</span> Version 5.1 <span className="mx-2 text-slate-700">·</span> Your AI engine stays in the backend
+          AutoDev Engineering OS <span className="mx-2 text-slate-700">·</span> Version 6.0 <span className="mx-2 text-slate-700">·</span> Your AI engine stays in the backend
         </footer>
       </div>
     </div>

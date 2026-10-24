@@ -62,7 +62,7 @@ export function Sidebar() {
           <p className="mt-1 text-xs leading-5 text-muted">Your roadmap, execution, and engineering signals in one place.</p>
         </div>
         <div className="mt-4 flex items-center justify-between px-2 text-[11px] text-slate-600">
-          <span>AutoDev UI</span><span>v5.1</span>
+          <span>AutoDev UI</span><span>v6.0</span>
         </div>
       </div>
     </aside>

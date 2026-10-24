@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, createElement, useContext, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { apiBaseUrl, apiService } from "../services/api";
 import type { LogEvent } from "../types";
 
-export function useLogs() {
+type LogStream = { logs: LogEvent[]; connected: boolean; ready: boolean };
+const LogStreamContext = createContext<LogStream | null>(null);
+
+function useLogStream(): LogStream {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [connected, setConnected] = useState(false);
+  const [ready, setReady] = useState(false);
   const lastEventId = useRef(0);
 
   useEffect(() => {
@@ -22,8 +27,12 @@ export function useLogs() {
     apiService.logs().then((initial) => {
       if (disposed) return;
       initial.forEach(accept);
+      setReady(true);
     }).catch(() => {
-      if (!disposed) setConnected(false);
+      if (!disposed) {
+        setConnected(false);
+        setReady(true);
+      }
     });
 
     const connect = () => {
@@ -59,5 +68,17 @@ export function useLogs() {
     };
   }, []);
 
-  return { logs, connected };
+  return { logs, connected, ready };
+}
+
+export function LogStreamProvider({ children }: { children: ReactNode }) {
+  const { logs, connected, ready } = useLogStream();
+  const stream = { logs, connected, ready };
+  return createElement(LogStreamContext.Provider, { value: stream }, children);
+}
+
+export function useLogs(): LogStream {
+  const stream = useContext(LogStreamContext);
+  if (!stream) throw new Error("useLogs must be used within LogStreamProvider.");
+  return stream;
 }

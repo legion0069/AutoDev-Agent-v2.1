@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from agents.git_agent import GitAgent, GitOperationResult
 from backend.api.main import create_app
+from backend.schemas.project import ProjectCreateRequest
 from backend.services.project_service import ProjectService
 from core.commit_scheduler import CommitScheduler
 from core.day_execution_engine import DayExecutionEngine
@@ -321,3 +324,165 @@ def test_app_startup_resumes_projects_persisted_as_running(tmp_path):
             time.sleep(0.01)
         assert restarted.get_status(project["project_id"])["status"] == "waiting"
         assert restarted.get_status(project["project_id"])["current_day"] == 2
+
+
+def test_project_schedule_runs_once_per_local_day_and_advances_one_day(tmp_path):
+    calls = []
+
+    def run_day(project):
+        calls.append(project["current_day"])
+        return {"success": True, "next_day": project["current_day"] + 1}
+
+    service = ProjectService(tmp_path, execution_runner=run_day)
+    project = service.create_project(
+        ProjectCreateRequest(
+            project_name="Scheduled project",
+            description="Run each project day on schedule",
+            tech_stack=["Python"],
+            days=3,
+            schedule_enabled=True,
+            schedule_time="00:00",
+            timezone="America/Los_Angeles",
+        )
+    )
+    local_now = datetime.now(ZoneInfo("America/Los_Angeles"))
+
+    assert service.run_due_schedules(local_now.astimezone(timezone.utc)) == [
+        project["project_id"]
+    ]
+    deadline = time.monotonic() + 5
+    while service.get_status(project["project_id"])["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert calls == [1]
+    assert service.get_status(project["project_id"])["current_day"] == 2
+    assert service.run_due_schedules(local_now.astimezone(timezone.utc)) == []
+
+    next_day = (local_now + timedelta(days=1)).replace(hour=1)
+    assert service.run_due_schedules(next_day.astimezone(timezone.utc)) == [
+        project["project_id"]
+    ]
+    deadline = time.monotonic() + 5
+    while service.get_status(project["project_id"])["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert calls == [1, 2]
+    assert service.get_status(project["project_id"])["current_day"] == 3
+
+
+def test_schedule_api_can_pause_and_resume_project_schedule(tmp_path):
+    service = ProjectService(tmp_path)
+    with TestClient(create_app(service)) as client:
+        created = client.post(
+            "/project/create",
+            json={
+                "project_name": "Schedule API",
+                "description": "Manage the daily schedule",
+                "tech_stack": ["Python"],
+                "days": 2,
+                "schedule_time": "08:30",
+                "timezone": "Europe/London",
+            },
+        )
+        project_id = created.json()["project"]["project_id"]
+        assert created.json()["progress"]["schedule_enabled"] is True
+        assert created.json()["progress"]["schedule_time"] == "08:30"
+        assert created.json()["progress"]["timezone"] == "Europe/London"
+
+        paused = client.put(
+            "/project/schedule",
+            params={"project_id": project_id},
+            json={
+                "enabled": False,
+                "schedule_time": "10:15",
+                "timezone": "Europe/London",
+            },
+        )
+        assert paused.status_code == 200
+        assert paused.json()["schedule_enabled"] is False
+        assert paused.json()["next_run_at"] is None
+
+        resumed = client.put(
+            "/project/schedule",
+            params={"project_id": project_id},
+            json={
+                "enabled": True,
+                "schedule_time": "10:15",
+                "timezone": "Europe/London",
+            },
+        )
+        assert resumed.status_code == 200
+        assert resumed.json()["schedule_enabled"] is True
+        assert resumed.json()["next_run_at"]
+
+        invalid = client.put(
+            "/project/schedule",
+            params={"project_id": project_id},
+            json={"enabled": True, "schedule_time": "25:00", "timezone": "UTC"},
+        )
+        assert invalid.status_code == 422
+
+
+def test_each_manual_execution_invocation_runs_only_one_day(tmp_path):
+    calls = []
+
+    def run_day(project):
+        calls.append(project["current_day"])
+        return {"success": True, "next_day": project["current_day"] + 1}
+
+    service = ProjectService(tmp_path, execution_runner=run_day)
+    project = service.create_project(
+        ProjectCreateRequest(
+            project_name="One day at a time",
+            description="Do not consume the full roadmap in one run",
+            tech_stack=["Python"],
+            days=3,
+            schedule_enabled=False,
+        )
+    )
+    service.start(project["project_id"])
+    deadline = time.monotonic() + 5
+    while service.get_status(project["project_id"])["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert calls == [1]
+    assert service.get_status(project["project_id"])["status"] == "waiting"
+    assert service.get_status(project["project_id"])["current_day"] == 2
+
+
+def test_startup_recovery_does_not_repeat_a_fully_persisted_day(tmp_path):
+    service = ProjectService(tmp_path)
+    project = service.create_project(
+        ProjectCreateRequest(
+            project_name="Completed-day recovery",
+            description="Do not replay milestones after a state-write interruption",
+            tech_stack=["Python"],
+            days=1,
+            schedule_enabled=False,
+        )
+    )
+    phase = project["plan"]["phases"][0]
+    engine = DayExecutionEngine(
+        service._execution_state_path(project["project_id"], 1)
+    )
+    engine.run_day(
+        1,
+        phase,
+        lambda _: {"success": True},
+        commit_target=project["daily_commit_target"],
+    )
+    service._execute_orchestrator = lambda _: (_ for _ in ()).throw(
+        AssertionError("Completed day should not be executed again.")
+    )
+
+    service.start(project["project_id"])
+    deadline = time.monotonic() + 5
+    while service.get_status(project["project_id"])["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    status = service.get_status(project["project_id"])
+    assert status["status"] == "completed"
+    assert status["completed_days"] == 1
+    assert any(
+        event["event"] == "execution.recovered"
+        for event in service.get_logs()
+    )

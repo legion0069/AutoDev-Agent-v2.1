@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Activity, ArrowRight, Clock3, GitCommitHorizontal, Layers3, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MetricCard } from "../components/MetricCard";
 import { PageHeading } from "../components/PageHeading";
 import { ProgressBar } from "../components/ProgressBar";
@@ -9,11 +10,32 @@ import { ExecutionControls } from "../components/ExecutionControls";
 import { apiService } from "../services/api";
 
 export function DashboardPage() {
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    () => typeof Notification === "undefined" ? "denied" : Notification.permission,
+  );
   const dashboard = useDashboard();
   const status = useProjectStatus();
+  const queryClient = useQueryClient();
   const github = useQuery({ queryKey: ["github-status"], queryFn: apiService.githubStatus, retry: 1 });
   const data = dashboard.data;
   const project = data?.current_project;
+  const scheduleMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiService.updateSchedule(
+        {
+          enabled,
+          schedule_time: project?.schedule_time ?? "09:00",
+          timezone: project?.timezone ?? "UTC",
+        },
+        project?.project_id,
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-status"] }),
+      ]);
+    },
+  });
   if (dashboard.isLoading) return <LoadingState />;
 
   return (
@@ -51,6 +73,36 @@ export function DashboardPage() {
           <Link to="/projects" className="button-primary mt-5 inline-flex">Create project <ArrowRight className="size-4" /></Link>
         </section>
       )}
+      {project && <section className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-panel/60 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Daily autonomous schedule</h3>
+          <p className="mt-1 text-xs text-muted">
+            {project.schedule_enabled
+              ? `Runs one project day at ${project.schedule_time} (${project.timezone}). ${
+                  project.next_run_at
+                    ? `Next run: ${new Date(project.next_run_at).toLocaleString()}`
+                    : "No future run scheduled."
+                }`
+              : "Automatic daily execution is paused."}
+          </p>
+          {scheduleMutation.isError && <p role="alert" className="mt-2 text-xs text-rose-300">Schedule could not be updated. Try again.</p>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {notificationPermission === "default" && <button className="button-secondary" onClick={() => {
+            if ("Notification" in window) {
+              void Notification.requestPermission().then(setNotificationPermission);
+            }
+          }}>Enable desktop alerts</button>}
+          {notificationPermission === "denied" && <span className="self-center text-xs text-muted">Desktop alerts blocked by browser</span>}
+          <button
+            className="button-secondary"
+            disabled={scheduleMutation.isPending || ["completed", "paused", "stopped"].includes(project.status)}
+            onClick={() => scheduleMutation.mutate(!project.schedule_enabled)}
+          >
+            {project.schedule_enabled ? "Pause schedule" : "Enable schedule"}
+          </button>
+        </div>
+      </section>}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Today's progress" value={`${data?.today_progress ?? 0}%`} detail="Current daily milestone" icon={Activity} accent="violet" />
         <MetricCard label="Remaining days" value={data?.remaining_days ?? 0} detail="On the active roadmap" icon={Clock3} accent="blue" />

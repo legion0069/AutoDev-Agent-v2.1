@@ -10,6 +10,7 @@ from backend.schemas.project import (
     ApiMessage,
     ProjectActionRequest,
     ProjectCreateRequest,
+    ProjectScheduleRequest,
     ProjectSummary,
 )
 
@@ -24,7 +25,7 @@ def _service(request: Request):
 def root() -> dict[str, Any]:
     return {
         "name": "AutoDev Web API",
-        "version": "5.2",
+        "version": "6.0",
         "docs": "/docs",
         "health": "/health",
     }
@@ -32,7 +33,7 @@ def root() -> dict[str, Any]:
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": "5.2"}
+    return {"status": "ok", "version": "6.0"}
 
 
 @router.post("/project/create")
@@ -86,6 +87,20 @@ def resume_project(request: Request, payload: ProjectActionRequest | None = None
 @router.post("/project/stop", response_model=ApiMessage)
 def stop_project(request: Request, payload: ProjectActionRequest | None = None) -> ApiMessage:
     return _action(request, payload, "stop")
+
+
+@router.put("/project/schedule")
+def update_project_schedule(
+    request: Request,
+    payload: ProjectScheduleRequest,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    try:
+        return _service(request).update_schedule(payload, project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/project/run-day")

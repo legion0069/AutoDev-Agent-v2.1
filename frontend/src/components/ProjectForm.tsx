@@ -14,6 +14,9 @@ const initial: ProjectCreatePayload = {
   daily_commit_target: 4,
   repository: "",
   mode: "autonomous",
+  schedule_enabled: true,
+  schedule_time: "09:00",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
 };
 
 function projectDefaults(): ProjectCreatePayload {
@@ -85,6 +88,9 @@ export function ProjectForm() {
         <label className="field-wrap"><span>Daily commit target</span><input type="number" min={1} max={8} value={form.daily_commit_target} onChange={(e) => update("daily_commit_target", Number(e.target.value))} /></label>
         <label className="field-wrap"><span>Execution mode</span><select value={form.mode} onChange={(e) => update("mode", e.target.value as ProjectCreatePayload["mode"])}><option value="autonomous">Autonomous</option><option value="approval">Approval</option></select></label>
         <label className="field-wrap sm:col-span-2"><span>GitHub repository <em className="not-italic text-slate-600">optional</em></span><input type="text" value={form.repository} onChange={(e) => update("repository", e.target.value)} placeholder="https://github.com/you/project" /></label>
+        <label className="field-wrap"><span>Daily start time</span><input type="time" value={form.schedule_time} onChange={(e) => update("schedule_time", e.target.value)} /></label>
+        <label className="field-wrap"><span>Timezone</span><input required value={form.timezone} onChange={(e) => update("timezone", e.target.value)} /></label>
+        <label className="flex items-center gap-3 text-sm text-slate-300 sm:col-span-2"><input type="checkbox" checked={form.schedule_enabled} onChange={(e) => update("schedule_enabled", e.target.checked)} className="size-4 accent-violet-400" />Automatically run one project day at this local time</label>
       </div>
       <button disabled={mutation.isPending || form.tech_stack.length === 0} className="button-primary mt-6 w-full justify-center sm:w-auto">
         {mutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUpRight className="size-4" />}Create & run

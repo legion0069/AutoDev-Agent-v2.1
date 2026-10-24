@@ -121,7 +121,7 @@ from core.incremental_test_runner import IncrementalTestRunner
 from core.performance_profiler import PerformanceProfiler
 from core.repository_watcher import RepositoryWatcher
 
-VERSION = "5.0"
+VERSION = "6.0"
 
 def print_banner() -> None:
     """Prints a friendly ASCII banner for AutoDev."""
@@ -272,7 +272,7 @@ def handle_profile(args):
 def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     """Parses legacy plan options and the newer developer-experience commands."""
     parser = argparse.ArgumentParser(
-        description="AutoDev (v5.0) - Autonomous AI Software Engineering Planner"
+        description=f"AutoDev (v{VERSION}) - Autonomous AI Software Engineering Planner"
     )
     parser.add_argument("--name", "-n", type=str, help="Project name")
     parser.add_argument("--desc", "-d", type=str, help="Project description")

@@ -1,4 +1,4 @@
-"""FastAPI application entry point for AutoDev Version 5.2."""
+"""FastAPI application entry point for AutoDev Version 6.0."""
 
 from __future__ import annotations
 
@@ -15,13 +15,18 @@ from backend.websocket.logs import router as websocket_router
 def create_app(project_service: ProjectService | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        app.state.project_service.resume_interrupted()
-        yield
+        service = app.state.project_service
+        service.resume_interrupted()
+        service.start_scheduler()
+        try:
+            yield
+        finally:
+            service.stop_scheduler()
 
     app = FastAPI(
         title="AutoDev API",
-        description="REST and WebSocket API for the AutoDev Version 5.2 dashboard.",
-        version="5.2.0",
+        description="REST and WebSocket API for the AutoDev Version 6.0 autonomous dashboard.",
+        version="6.0.0",
         lifespan=lifespan,
     )
     app.state.project_service = project_service or ProjectService()

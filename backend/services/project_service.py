@@ -12,15 +12,16 @@ import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time as local_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from agents.git_agent import CommitResult, GitAgent
 from agents.planner_agent import generate_project_plan, save_project_plan
 from agents.task_planner_agent import Task, TaskPlannerAgent
-from backend.schemas.project import ProjectCreateRequest
+from backend.schemas.project import ProjectCreateRequest, ProjectScheduleRequest
 from core.commit_scheduler import CommitScheduler
 from core.day_execution_engine import DayExecutionEngine, Milestone, milestone_slug
 from core.github_execution import GitHubExecution
@@ -100,6 +101,8 @@ class ProjectService:
         self._run_started: dict[str, float] = {}
         self._interrupted_project_ids: list[str] = []
         self._next_event_id = 1
+        self._scheduler_stop = threading.Event()
+        self._scheduler_thread: threading.Thread | None = None
         self._load()
 
     def create_project(self, request: ProjectCreateRequest) -> dict[str, Any]:
@@ -114,6 +117,11 @@ class ProjectService:
         plan["execution_mode"] = request.mode
         plan["working_hours"] = request.working_hours
         plan["daily_commit_target"] = request.daily_commit_target
+        plan["schedule"] = {
+            "enabled": request.schedule_enabled,
+            "time": request.schedule_time,
+            "timezone": request.timezone,
+        }
         for daily_commit_plan in plan["daily_commit_plan"]:
             daily_commit_plan["expected_commits"] = str(request.daily_commit_target)
         plan["project_state"].update(
@@ -154,6 +162,11 @@ class ProjectService:
             "review_status": "pending",
             "push_status": "not_configured",
             "execution_started_at": None,
+            "schedule_enabled": request.schedule_enabled,
+            "schedule_time": request.schedule_time,
+            "timezone": request.timezone,
+            "last_run_at": None,
+            "last_run_local_date": None,
         }
 
         with self._lock:
@@ -226,6 +239,11 @@ class ProjectService:
             "updated_at": project["updated_at"],
             "repository": project["repository"],
             "error": project["error"],
+            "schedule_enabled": project.get("schedule_enabled", False),
+            "schedule_time": project.get("schedule_time", "09:00"),
+            "timezone": project.get("timezone", "UTC"),
+            "next_run_at": self._next_run_at(project),
+            "last_run_at": project.get("last_run_at"),
         }
 
     def start(self, project_id: str | None = None) -> dict[str, Any]:
@@ -242,6 +260,9 @@ class ProjectService:
             record["stop_requested"] = False
             record["pause_at_boundary"] = False
             record["started_at"] = record["started_at"] or _timestamp()
+            local_now = datetime.now(ZoneInfo(record.get("timezone", "UTC")))
+            record["last_run_local_date"] = local_now.date().isoformat()
+            record["last_run_at"] = _timestamp()
             self._run_started[record["project_id"]] = time.monotonic()
             phase = record["plan"]["phases"][record["current_day"] - 1]
             record["current_task"] = (phase.get("tasks") or [phase["phase_name"]])[0]
@@ -259,6 +280,111 @@ class ProjectService:
         thread.start()
         return self.get_status(project["project_id"])
 
+    def update_schedule(
+        self, payload: ProjectScheduleRequest, project_id: str | None = None
+    ) -> dict[str, Any]:
+        project = self.get_project(project_id)
+        with self._lock:
+            record = self._projects[project["project_id"]]
+            if payload.enabled and record["status"] in {"completed", "paused", "stopped"}:
+                raise RuntimeError(
+                    f"A project in {record['status']!r} status cannot be scheduled."
+                )
+            record["schedule_enabled"] = payload.enabled
+            record["schedule_time"] = payload.schedule_time
+            record["timezone"] = payload.timezone
+            record["updated_at"] = _timestamp()
+            self._persist()
+        self.publish_log(
+            "Daily schedule enabled." if payload.enabled else "Daily schedule paused.",
+            event="schedule.updated",
+            day=project["current_day"],
+            data={
+                "enabled": payload.enabled,
+                "schedule_time": payload.schedule_time,
+                "timezone": payload.timezone,
+            },
+        )
+        return self.get_status(project["project_id"])
+
+    def run_due_schedules(self, now: datetime | None = None) -> list[str]:
+        """Starts each due project at most once per local calendar day."""
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            raise ValueError("Scheduler time must be timezone-aware.")
+        with self._lock:
+            projects = [
+                json.loads(json.dumps(project))
+                for project in self._projects.values()
+            ]
+        started: list[str] = []
+        for project in projects:
+            if (
+                not project.get("schedule_enabled", False)
+                or project.get("status") not in {"planned", "waiting", "failed"}
+            ):
+                continue
+            local_now = current.astimezone(ZoneInfo(project.get("timezone", "UTC")))
+            if local_now.strftime("%H:%M") < project.get("schedule_time", "09:00"):
+                continue
+            if project.get("last_run_local_date") == local_now.date().isoformat():
+                continue
+            try:
+                self.start(project["project_id"])
+                started.append(project["project_id"])
+            except RuntimeError:
+                logger.info(
+                    "Skipped scheduled start for project %s because its state changed.",
+                    project["project_id"],
+                )
+        return started
+
+    def start_scheduler(self, interval_seconds: float = 15.0) -> None:
+        if interval_seconds <= 0:
+            raise ValueError("Scheduler interval must be positive.")
+        with self._lock:
+            if self._scheduler_thread and self._scheduler_thread.is_alive():
+                return
+            self._scheduler_stop.clear()
+            self._scheduler_thread = threading.Thread(
+                target=self._scheduler_loop,
+                args=(interval_seconds,),
+                name="autodev-daily-scheduler",
+                daemon=True,
+            )
+            self._scheduler_thread.start()
+
+    def stop_scheduler(self, timeout: float = 5.0) -> None:
+        self._scheduler_stop.set()
+        thread = self._scheduler_thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, timeout))
+
+    def _scheduler_loop(self, interval_seconds: float) -> None:
+        while not self._scheduler_stop.wait(interval_seconds):
+            try:
+                self.run_due_schedules()
+            except Exception:
+                logger.exception("Daily scheduler iteration failed.")
+
+    @staticmethod
+    def _next_run_at(project: dict[str, Any]) -> str | None:
+        if (
+            not project.get("schedule_enabled", False)
+            or project.get("status") in {"completed", "paused", "stopped"}
+        ):
+            return None
+        zone = ZoneInfo(project.get("timezone", "UTC"))
+        now = datetime.now(zone)
+        scheduled = local_time.fromisoformat(project.get("schedule_time", "09:00"))
+        run_date = now.date()
+        if project.get("last_run_local_date") == run_date.isoformat():
+            run_date += timedelta(days=1)
+        scheduled_at = datetime.combine(run_date, scheduled, tzinfo=zone)
+        if scheduled_at < now:
+            scheduled_at = now
+        return scheduled_at.astimezone(timezone.utc).isoformat(timespec="seconds")
+
     def resume_interrupted(self) -> list[dict[str, Any]]:
         """Restarts projects that were persisted as running when the service stopped."""
         interrupted = list(self._interrupted_project_ids)
@@ -272,6 +398,7 @@ class ProjectService:
             if record["status"] != "running":
                 raise RuntimeError("Only a running project can be paused.")
             record["pause_requested"] = True
+            record["schedule_enabled"] = False
             record["updated_at"] = _timestamp()
             self._persist()
         self.publish_log(
@@ -295,6 +422,7 @@ class ProjectService:
                 record["stop_requested"] = True
             elif record["status"] not in {"completed", "stopped"}:
                 record["status"] = "stopped"
+            record["schedule_enabled"] = False
             record["updated_at"] = _timestamp()
             self._persist()
         self.publish_log(
@@ -556,6 +684,9 @@ class ProjectService:
             "default_working_hours": project["working_hours"] if project else 3,
             "theme": "dark",
             "backend_url": os.environ.get("AUTODEV_API_URL", "http://localhost:8000"),
+            "schedule_enabled": project.get("schedule_enabled", False) if project else False,
+            "schedule_time": project.get("schedule_time", "09:00") if project else "09:00",
+            "timezone": project.get("timezone", "UTC") if project else "UTC",
         }
 
     def github_status(self) -> dict[str, Any]:
@@ -605,7 +736,18 @@ class ProjectService:
                     result = self.execution_runner(project)
                     summary = self._normalize_execution_result(result)
                 else:
-                    summary = self._normalize_execution_result(self._execute_orchestrator(project))
+                    recovered = self._completed_day_summary(project, day)
+                    if recovered is not None:
+                        summary = recovered
+                        self.publish_log(
+                            f"Recovered completed Day {day} without rerunning its milestones.",
+                            event="execution.recovered",
+                            day=day,
+                        )
+                    else:
+                        summary = self._normalize_execution_result(
+                            self._execute_orchestrator(project)
+                        )
 
                 with self._lock:
                     record = self._projects[project_id]
@@ -666,7 +808,6 @@ class ProjectService:
                         elif record.get("stop_requested") and record["status"] not in {"completed", "failed"}:
                             record["status"] = "stopped"
                             record["pause_at_boundary"] = True
-                    break
                 if not completed:
                     break
                 with self._lock:
@@ -680,7 +821,9 @@ class ProjectService:
                     if record["stop_requested"]:
                         record["status"] = "stopped"
                         record["pause_at_boundary"] = True
-                        break
+                # A scheduled invocation executes one roadmap day, then waits
+                # for the next local schedule instead of consuming the whole plan.
+                break
 
             with self._lock:
                 record = self._projects[project_id]
@@ -713,6 +856,49 @@ class ProjectService:
                 event="execution.failed",
                 day=project["current_day"],
             )
+
+    def _completed_day_summary(
+        self, project: dict[str, Any], day: int
+    ) -> dict[str, Any] | None:
+        engine = DayExecutionEngine(self._execution_state_path(project["project_id"], day))
+        state = engine.state
+        if state is None or state.status != "completed":
+            return None
+        report_path = (
+            self.projects_dir
+            / project["project_id"]
+            / "memory"
+            / "reports"
+            / f"day_{day}.md"
+        )
+        if not report_path.is_file():
+            changed_files = {
+                file_path
+                for commit in state.completed_commits
+                for file_path in commit.get("files", [])
+            }
+            self._write_day_report(
+                project,
+                day,
+                project["plan"],
+                engine,
+                [],
+                [],
+                changed_files,
+                execution_status="completed",
+            )
+        return {
+            "overall_success": True,
+            "next_day": day + 1,
+            "message": "Recovered a day whose milestones were already persisted as completed.",
+            "error": None,
+            "commits_created": [
+                str(commit["hash"])
+                for commit in state.completed_commits
+                if commit.get("hash")
+            ],
+            "average_test_pass_rate": None,
+        }
 
     def _execute_orchestrator(self, project: dict[str, Any]) -> Any:
         workspace = self.workspaces_dir / project["project_id"]
@@ -1153,6 +1339,11 @@ class ProjectService:
                 default=0,
             ) + 1
             for project_id, record in self._projects.items():
+                record.setdefault("schedule_enabled", False)
+                record.setdefault("schedule_time", "09:00")
+                record.setdefault("timezone", "UTC")
+                record.setdefault("last_run_at", None)
+                record.setdefault("last_run_local_date", None)
                 if record.get("status") == "running":
                     self._interrupted_project_ids.append(project_id)
                     record["status"] = "waiting"
