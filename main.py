@@ -121,7 +121,7 @@ from core.incremental_test_runner import IncrementalTestRunner
 from core.performance_profiler import PerformanceProfiler
 from core.repository_watcher import RepositoryWatcher
 
-VERSION = "3.6.1"
+VERSION = "5.0"
 
 def print_banner() -> None:
     """Prints a friendly ASCII banner for AutoDev."""
@@ -177,6 +177,8 @@ def display_plan_summary(plan: dict, output_path: Path) -> None:
     print(f"Project Name   : {plan['project_name']}")
     print(f"Description    : {plan['project_description']}")
     print(f"Tech Stack     : {plan['technology_stack']}")
+    print(f"GitHub Repo    : {plan.get('github_repository') or 'Not provided'}")
+    print(f"Execution Mode : {plan.get('execution_mode', 'Autonomous')}")
     print(f"Total Duration : {plan['total_days']} day(s)")
     print(f"Saved To       : {output_path.resolve()}")
     print("-" * 60)
@@ -202,7 +204,9 @@ def handle_plan(args):
     project_name = args.name or prompt_for_input("1. Enter Project Name")
     project_desc = args.desc or prompt_for_input("2. Enter Project Description")
     tech_stack = args.stack or prompt_for_input("3. Enter Technology Stack")
-    days = args.days or prompt_for_days("4. Enter Number of Development Days", default=5)
+    days = args.days if args.days is not None else prompt_for_days("4. Enter Number of Development Days", default=5)
+    repo = getattr(args, "repo", None) or prompt_for_input("5. Enter GitHub Repository URL", default="")
+    mode = getattr(args, "mode", None) or prompt_for_input("6. Select Execution Mode", default="Autonomous")
 
     print("\n[*] Synthesizing structured development phases...")
     try:
@@ -211,6 +215,8 @@ def handle_plan(args):
             project_description=project_desc,
             tech_stack=tech_stack,
             days=days,
+            github_repository=repo,
+            execution_mode=mode,
         )
         output_path = save_project_plan(plan, filepath=args.output)
         display_plan_summary(plan, output_path)
@@ -266,7 +272,7 @@ def handle_profile(args):
 def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     """Parses legacy plan options and the newer developer-experience commands."""
     parser = argparse.ArgumentParser(
-        description="AutoDev (v1) - Autonomous AI Software Development Agent Planner"
+        description="AutoDev (v5.0) - Autonomous AI Software Engineering Planner"
     )
     parser.add_argument("--name", "-n", type=str, help="Project name")
     parser.add_argument("--desc", "-d", type=str, help="Project description")
@@ -275,6 +281,8 @@ def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Technology stack (e.g. 'Python, FastAPI, SQLite')",
     )
     parser.add_argument("--days", "-t", type=int, help="Number of development days")
+    parser.add_argument("--repo", "--github-repository", type=str, help="GitHub repository URL")
+    parser.add_argument("--mode", "--execution-mode", type=str, help="Execution mode (Autonomous or Approval)")
     parser.add_argument(
         "--output", "-o", type=str, default="memory/project_plan.json",
         help="Output JSON file path (default: memory/project_plan.json)",
@@ -286,6 +294,8 @@ def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     plan_parser.add_argument("--desc", "-d", type=str, default=argparse.SUPPRESS)
     plan_parser.add_argument("--stack", "-s", type=str, default=argparse.SUPPRESS)
     plan_parser.add_argument("--days", "-t", type=int, default=argparse.SUPPRESS)
+    plan_parser.add_argument("--repo", "--github-repository", type=str, default=argparse.SUPPRESS)
+    plan_parser.add_argument("--mode", "--execution-mode", type=str, default=argparse.SUPPRESS)
     plan_parser.add_argument("--output", "-o", type=str, default=argparse.SUPPRESS)
 
     # Benchmark

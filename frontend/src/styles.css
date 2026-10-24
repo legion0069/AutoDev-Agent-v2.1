@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  background: #090d18;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+
+@layer components {
+  .button-primary {
+    @apply inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-950/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .button-secondary {
+    @apply inline-flex items-center gap-2 rounded-xl border border-line bg-surface/70 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .field-wrap {
+    @apply flex min-w-0 flex-col gap-2 text-xs font-medium text-slate-300;
+  }
+  .field-wrap input, .field-wrap textarea, .field-wrap select {
+    @apply w-full rounded-xl border border-line bg-[#0b111e] px-3.5 py-3 text-sm font-normal text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/10;
+  }
+  .field-wrap textarea { resize: vertical; }
+}
+
+::selection { background: rgba(139, 124, 255, 0.3); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { border-radius: 999px; background: #263149; }
+::-webkit-scrollbar-track { background: transparent; }

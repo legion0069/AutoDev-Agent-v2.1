@@ -14,6 +14,25 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+DEFAULT_WORKFLOW = [
+    "User Request",
+    "Requirement Understanding",
+    "Architecture Design",
+    "Project Breakdown",
+    "Roadmap Generation",
+    "Daily Planning",
+    "Today's Work",
+    "Code Generation",
+    "Incremental Validation",
+    "Automatic Bug Fixing",
+    "Documentation Update",
+    "Git Commit",
+    "Git Push",
+    "Project State Update",
+    "Wait Until Next Execution",
+]
+
+
 def _generate_day_phase(
     day: int,
     total_days: int,
@@ -214,44 +233,81 @@ def generate_project_plan(
     project_description: str,
     tech_stack: str,
     days: int,
+    github_repository: str | None = None,
+    execution_mode: str | None = None,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Generates a complete structured project plan dictionary.
 
-    Args:
-        project_name: Name of the project.
-        project_description: Brief summary of the project goals.
-        tech_stack: Comma-separated or descriptive list of technologies.
-        days: Total number of development days.
-
-    Returns:
-        Structured plan dictionary ready for JSON serialization.
+    Additional metadata such as GitHub repository and execution mode is included to
+    support the full AutoDev v5.0 autonomous project lifecycle workflow while
+    preserving backward compatibility with the original planner API.
     """
-    if days < 1:
+    try:
+        total_days = int(days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Number of development days must be a positive integer.") from exc
+
+    if total_days < 1:
         raise ValueError("Number of development days must be at least 1.")
 
-    clean_name = project_name.strip()
-    clean_desc = project_description.strip()
-    clean_stack = tech_stack.strip()
+    clean_name = str(project_name).strip()
+    clean_desc = str(project_description).strip()
+    clean_stack = str(tech_stack).strip()
+
+    repo_url = (
+        github_repository
+        or kwargs.get("repository_url")
+        or kwargs.get("repo_url")
+        or kwargs.get("github_url")
+        or kwargs.get("repo")
+        or ""
+    )
+    resolved_mode = (
+        execution_mode
+        or kwargs.get("mode")
+        or kwargs.get("execution")
+        or "Autonomous"
+    )
+    normalized_mode = str(resolved_mode).strip() or "Autonomous"
 
     phases: List[Dict[str, Any]] = [
         _generate_day_phase(
             day=day_idx,
-            total_days=days,
+            total_days=total_days,
             project_name=clean_name,
             project_description=clean_desc,
             tech_stack=clean_stack,
         )
-        for day_idx in range(1, days + 1)
+        for day_idx in range(1, total_days + 1)
     ]
 
     plan: Dict[str, Any] = {
         "project_name": clean_name,
         "project_description": clean_desc,
         "technology_stack": clean_stack,
-        "total_days": days,
+        "total_days": total_days,
+        "github_repository": str(repo_url).strip(),
+        "execution_mode": normalized_mode,
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "workflow": list(DEFAULT_WORKFLOW),
         "phases": phases,
+        "daily_commit_plan": [
+            {
+                "day": day_idx,
+                "focus": phase["phase_name"],
+                "commit_pattern": "conventional",
+                "expected_commits": "1-4",
+            }
+            for day_idx, phase in enumerate(phases, start=1)
+        ],
+        "project_state": {
+            "status": "planned",
+            "milestone_count": len(phases),
+            "repository": str(repo_url).strip(),
+            "execution_mode": normalized_mode,
+        },
     }
 
     return plan

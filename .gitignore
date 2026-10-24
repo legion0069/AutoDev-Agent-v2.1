@@ -10,6 +10,8 @@ env/
 venv/
 .vscode/
 .idea/
+frontend/node_modules/
+frontend/dist/
 
 # Testing & Coverage
 .pytest_cache/

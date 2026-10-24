@@ -1,14 +1,16 @@
-# AutoDev — Autonomous Software Engineering Intelligence (Version 4.0)
+# AutoDev — Autonomous Software Engineering Intelligence (Version 5.2)
 
-> Current release: **Version 4.0**. The Version 3.5 federation material below is retained as historical architecture documentation.
+> Current release: **Version 5.2**. The Version 5.1 graphical dashboard and FastAPI interface are extended with persisted day/milestone execution, validated commits, and verified GitHub pushes.
 
-AutoDev is an enterprise-grade autonomous software company platform implemented natively using **100% Python Standard Library** (zero external orchestration frameworks, zero LangGraph, zero CrewAI, zero AutoGen, zero Haystack, zero external databases, zero external message brokers). 
+The product flow now starts from a user request containing a project description, technology stack, duration, GitHub repository, and execution mode. It then drives requirement understanding, architecture design, project breakdown, daily planning, incremental validation, and automatic bug fixing before committing and pushing validated work.
+
+AutoDev is an enterprise-grade autonomous software company platform. The existing engineering core continues to use Python's standard library; the optional Version 5.1 web interface adds a FastAPI backend and a React dashboard without moving AI or planning logic into the frontend.
 
 Version 3.5 evolves AutoDev from a single autonomous enterprise (v3.4) into a macroscopic **Autonomous Enterprise Ecosystem & Federation of AI Companies**. Instead of a single company, AutoDev v3.5 orchestrates an entire ecosystem of autonomous software enterprises collaborating, sharing institutional knowledge, trading compute and engineering capacity in a double-auction marketplace, resolving cross-enterprise dependencies via Critical Path Method (CPM), enforcing Zero-Trust cryptographic security, and driving cross-company innovation initiatives.
 
 The platform coordinates **8 specialized corporate entities**, **10 executive federation agents**, and **12 macroscopic infrastructure subsystems** across an asynchronous, thread-safe, HMAC-SHA256 authenticated inter-company message bus.
 
-Everything operates deterministically with zero external runtime dependencies, thread-safe concurrency (`threading.RLock`), SHA-256 tamper-evident audit trails, and **100% backward compatibility** across all previous AutoDev versions (v1.0 through v3.4).
+The core operates deterministically with zero external runtime dependencies, thread-safe concurrency (`threading.RLock`), SHA-256 tamper-evident audit trails, and backward-compatible CLI and engine APIs. The optional V5.1 web interface uses the dependencies listed in `requirements.txt` and `frontend/package.json`.
 
 ---
 
@@ -1298,3 +1300,193 @@ under `memory/benchmarks/v311_benchmark_results.json`,
 host-dependent. See [`v311_engineering_report.md`](./v311_engineering_report.md)
 for architecture, workflow, APIs, benchmark values, compatibility, and
 validation results.
+
+## Version 5.1 — Professional Web UI
+
+The Version 5.1 dashboard is an optional graphical interface over the existing
+AutoDev planner and daily orchestrator. The CLI, planner API, and orchestrator
+API remain available and unchanged. The React client only presents data and
+sends REST/WebSocket requests; project planning and execution stay in Python.
+
+### Starting the backend
+
+From the repository root, install the backend dependencies and start FastAPI:
+
+```console
+python -m pip install -r requirements.txt
+uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+The interactive API contract is available at `http://127.0.0.1:8000/docs`.
+Persistent dashboard state defaults to `~/.autodev/web-ui`; set
+`AUTODEV_DATA_DIR` to choose a different data directory.
+
+### Starting the frontend
+
+In another terminal:
+
+```console
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`. Set `VITE_API_URL` when the backend is not at
+`http://localhost:8000`, for example:
+
+```console
+VITE_API_URL=http://127.0.0.1:8000 npm run dev
+```
+
+### Development and architecture
+
+Run the dashboard production type-check and bundle with `npm run build` from
+`frontend/`. The REST API uses Pydantic schemas and delegates roadmap generation
+to `agents.planner_agent.generate_project_plan`; daily execution is delegated
+to the existing `core.orchestrator.Orchestrator`. Resumable execution logs use
+the `/ws/logs` WebSocket and the matching `/project/logs` REST history endpoint.
+
+```mermaid
+flowchart LR
+    User[User] --> UI[React + TypeScript dashboard]
+    UI -->|REST / JSON| API[FastAPI routes]
+    UI <-->|WebSocket log events| WS[Log stream]
+    API --> Service[Project service]
+    WS --> Service
+    Service --> Planner[Existing planner agent]
+    Service --> Engine[Existing daily orchestrator]
+    Service --> Store[(Local UI state)]
+    Planner --> Store
+    Engine --> Store
+```
+
+The frontend does not import AutoDev engine code or make planning decisions.
+`frontend/README` is not required: setup, backend endpoints, and events are
+documented in this repository README and [`v51_engineering_report.md`](./v51_engineering_report.md).
+
+### Screenshot placeholders
+
+- Dashboard: `docs/screenshots/v51-dashboard.png` (placeholder)
+- Projects and new-project form: `docs/screenshots/v51-projects.png` (placeholder)
+- Live execution terminal: `docs/screenshots/v51-execution.png` (placeholder)
+- Day-by-day roadmap: `docs/screenshots/v51-roadmap.png` (placeholder)
+- History and benchmarks: `docs/screenshots/v51-history.png` (placeholder)
+- Settings: `docs/screenshots/v51-settings.png` (placeholder)
+
+## Version 5.2 — Autonomous Daily Execution
+
+The V5.2 execution service executes each roadmap task as a separately persisted
+milestone. The existing orchestrator remains responsible for code generation,
+incremental tests, AI review, and repair retries. A project start continues
+automatically through its remaining days; pause/stop requests are honored at
+milestone boundaries. An interrupted or failed milestone can be resumed without
+re-running completed milestones. FastAPI startup automatically resumes projects
+that were persisted as running when the backend process stopped.
+
+Execution state and daily reports are stored under
+`~/.autodev/web-ui/projects/<project-id>/memory/execution/` and
+`memory/reports/` respectively. The execution engine records milestone status,
+commit hashes, failed tasks, retry queue, and elapsed time. Commits are created
+only for meaningful source, test, documentation, or configuration changes, and
+are titled `Day X - Milestone title`. When a GitHub repository is configured,
+each commit is pushed and its remote branch head is verified before the
+milestone is marked complete. Projects without a configured repository retain
+local commits and report that pushing is not configured.
+
+### Execution lifecycle
+
+```mermaid
+flowchart TD
+    Start[Start project] --> Load[Load roadmap and persisted day state]
+    Load --> Milestones[Select first unfinished milestone]
+    Milestones --> Implement[Existing orchestrator: implement]
+    Implement --> Validate[Incremental tests, review, and repair]
+    Validate -->|failed| PersistFailure[Persist failure and retry queue]
+    PersistFailure --> Resume[Resume same milestone]
+    Resume --> Implement
+    Validate -->|passed| Commit{Meaningful changes?}
+    Commit -->|yes| LocalCommit[Create Day X - Milestone Y commit]
+    LocalCommit --> Push{GitHub configured?}
+    Push -->|yes| Verify[Push and verify remote commit]
+    Push -->|no| Advance
+    Verify --> Advance[Persist milestone completion]
+    Commit -->|no| Advance
+    Advance --> More{Milestones remain?}
+    More -->|yes| Milestones
+    More -->|no| Report[Write day report and advance day]
+    Report -->|more days| Load
+    Report -->|complete| Finish[Execution finished]
+```
+
+### Milestone and commit lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running
+    running --> completed: tests and review pass
+    running --> failed: execution or push failure
+    failed --> pending: resume/retry
+    completed --> [*]
+```
+
+```mermaid
+sequenceDiagram
+    participant E as Day execution engine
+    participant O as Existing orchestrator
+    participant C as Commit scheduler
+    participant G as GitHub execution
+    E->>O: Execute one roadmap task
+    O-->>E: Test, review, repair result
+    E->>C: Inspect source/test/docs/config changes
+    C-->>E: No commit or local commit hash
+    opt Configured GitHub remote
+        E->>G: Push commit (bounded retries)
+        G->>G: Verify remote branch hash
+        G-->>E: Verified or explicit failure
+    end
+    E->>E: Persist milestone state and report
+```
+
+### V5.2 REST API additions
+
+The existing V5.1 APIs remain unchanged. Additions are:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/project/run-day` | Start/resume autonomous day execution |
+| `POST` | `/project/run-milestone` | Start/resume milestone execution |
+| `POST` | `/project/create-commit` | Create a commit for current meaningful changes |
+| `POST` | `/project/push` | Push and verify the latest project commit |
+| `POST` | `/project/review` | Read current review status (review runs within milestones) |
+| `GET` | `/project/current-day` | Current persisted day, milestone state, and roadmap phase |
+| `GET` | `/project/current-milestone` | Current milestone and execution state |
+| `GET` | `/project/commits` | Project commit history |
+| `GET` | `/project/report` | Latest or selected day report |
+
+All action endpoints accept the existing optional JSON body
+`{"project_id": "<id>"}`. Errors use HTTP 404 for missing projects/resources and
+HTTP 409 for lifecycle or execution conflicts.
+
+### V5.2 WebSocket events
+
+The existing resumable `/ws/logs` endpoint now also emits the following event
+names. Each event retains the existing `LogEvent` envelope (`event_id`,
+`timestamp`, `level`, `event`, `message`, `day`, and `data`):
+
+`execution_started`, `milestone_started`, `milestone_completed`,
+`review_started`, `review_completed`, `commit_created`, `push_started`,
+`push_completed`, `day_completed`, and `execution_finished`.
+
+Existing dotted V5.1 event names remain available for backward compatibility.
+Reconnect with `?after=<event_id>` to replay persisted log events.
+
+### V5.2 screenshots placeholders
+
+- Milestone execution and controls: `docs/screenshots/v52-execution.png`
+- Commit and GitHub push status: `docs/screenshots/v52-github-lifecycle.png`
+- Day report and completed roadmap: `docs/screenshots/v52-day-report.png`
+
+See [`v52_engineering_report.md`](./v52_engineering_report.md) for the
+engineering report, lifecycle diagrams, API/event specifications, and
+validation and benchmark summaries.
